@@ -1,0 +1,10 @@
+#PBS -l walltime=24:00:00 
+#PBS -l select=1:ncpus=8:mem=16gb
+
+cd $PBS_O_WORKDIR
+module load fastqc 
+mkdir QC_reports; mkdir tmp
+fastqc -d tmp -o QC_reports -f fastq ~/path/to/*fastq.gz
+
+
+

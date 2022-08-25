@@ -1,0 +1,18 @@
+#PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=2:mem=16gb
+
+cd $PBS_O_WORKDIR
+module load picard
+
+for i in $(ls *_sorted_RG_markdup.bam); do
+outname=$(basename ${i} _sorted_RG_markdup.bam)
+
+java -Xmx4g -jar /apps/picard/2.6.0/picard.jar CollectInsertSizeMetrics \
+I=${i} \
+O=${outname}_insert_size_metrics.txt \
+H=${outname}_insert_size_histogram.pdf \
+M=0.001
+
+done
+
+

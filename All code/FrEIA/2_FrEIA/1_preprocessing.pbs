@@ -1,0 +1,13 @@
+#PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=32:mem=64gb
+
+cd $PBS_O_WORKDIR
+module load anaconda3/personal
+source activate snakemake
+
+snakemake --printshellcmds \
+          --keep-going \
+          --use-conda \
+          --cores 8 \
+          -s 1_preprocessing.smk
+

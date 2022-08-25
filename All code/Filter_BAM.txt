@@ -1,0 +1,14 @@
+PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=8:mem=16gb
+
+cd $PBS_O_WORKDIR
+module load samtools
+
+for i in $(ls *_sorted_RG_markdup.bam); do
+outname=$(basename ${i} _sorted_RG_markdup.bam)
+
+#0-150bp
+samtools view -h ${i} |   awk 'substr($0,1,1)=="@" || ($9>= 0 && $9<=150)' |   samtools view -bS -> ${outname}_150.bam
+
+done
+

@@ -1,0 +1,12 @@
+#PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=8:mem=16gb
+
+cd $PBS_O_WORKDIR
+module load samtools
+
+for i in $(ls *.bam); do
+outname=$(basename ${i} .bam)
+
+samtools stats ${i} | grep ^IS | cut -f 2- > ${outname}_samtools_insert_size.txt
+
+done

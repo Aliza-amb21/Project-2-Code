@@ -1,0 +1,15 @@
+#PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=8:mem=16gb
+
+cd $PBS_O_WORKDIR
+
+module load anaconda3/personal
+
+conda create -n test_Renv r-base r-devtools r-optparse bioconductor-hmmcopy bioconductor-genomicranges r-plyr bioconductor-genomeinfodb -c conda-forge -c bioconda
+
+source activate test_Renv
+
+R -e 'options(unzip = "internal");library(devtools);devtools::install_github("broadinstitute/ichorCNA")'
+
+#clone the repository 
+git clone https://github.com/broadinstitute/ichorCNA.git

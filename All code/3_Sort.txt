@@ -1,0 +1,29 @@
+#PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=48:mem=16gb
+
+cd $PBS_O_WORKDIR
+module load gatk/4.0
+
+for i in $(ls *.bam); do
+outname=$(basename ${i} .bam)
+
+java \
+-XX:ParallelGCThreads=48 \
+-Djava.io.tmpdir=$TMPDIR \
+-Xmx16g \
+-jar /apps/picard/2.6.0/picard.jar \
+AddOrReplaceReadGroups \
+RGPL=ILLUMINA \
+RGPU=IGF \
+RGLB=IGF \
+RGSM=outname \
+RGCN=IGF \
+SORT_ORDER=coordinate \
+RGID=outname \
+I=${i} \
+O=${outname}_sorted_RG.bam
+
+done
+
+
+

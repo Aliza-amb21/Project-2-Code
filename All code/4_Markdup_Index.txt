@@ -1,0 +1,30 @@
+#PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=48:mem=124gb
+
+cd $PBS_O_WORKDIR
+
+module load gatk/4.0
+
+
+for i in $(ls *_sorted_RG.bam); do
+outname=$(basename ${i} _sorted_RG.bam)
+
+
+java \
+-XX:ParallelGCThreads=48 \
+-Djava.io.tmpdir=$TMPDIR \
+-Xmx62g \
+-jar /apps/picard/2.6.0/picard.jar \
+MarkDuplicates \
+O=${outname}_sorted_RG_markdup.bam \
+M=${outname}_markdup_summary.txt \
+I=${i}
+
+java \
+-Xmx16g \
+-jar /apps/picard/2.6.0/picard.jar \
+BuildBamIndex \
+I=${outname}_sorted_RG_markdup.bam
+
+done
+
