@@ -34,7 +34,7 @@ FiltQual: 5
 
 #===FREIA | EXTRACT_FRAGMENT_ENDS PARAMETERS===
 # The number of bases to be extracted on the fragment ends.
-nBase: 4
+nBase: 3
 
 #===FREIA | DATA_TRANSFORMATION PARAMETERS===
 # The fraction (between 0 and 1) of reads to use. The default is 1.
