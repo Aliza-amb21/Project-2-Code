@@ -1,0 +1,4147 @@
+---
+title: "Project 2 Code"
+author: "Aliza Butt"
+date: "17/05/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Libraries
+```{r}
+library(here)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(ggstatsplot)
+library(hrbrthemes)
+library(viridis)
+library(gmodels)
+library(car)
+library(DescTools)
+library(qqplotr)
+library(ggpubr)
+library(rstatix)
+library(ggsignif)
+library(gapminder)
+library(reshape)
+library(gplots)
+library(RColorBrewer)
+
+options(scipen = 999)
+
+```
+
+Set working directory
+```{r}
+setwd("\\Users\\Maham\\Desktop\\Aliza\\Imperial\\Project\\Project_2\\Preprocessing\\Insert_size_metrics_data")
+```
+
+Samtools insert sizes data 
+- Run for sWGS and TMB
+```{r}
+setwd("\\Users\\Maham\\Desktop\\Aliza\\Imperial\\Project\\Project_2\\Preprocessing\\Insert_size_metrics_data\\Samtools_insert_sizes_new2")
+
+filenames_s = list.files(pattern = "samtools_insert_size.csv")
+
+insert_size_s = list()
+
+for (filename in filenames_s){
+  
+  sizes_s <- read_csv(filename, col_names = FALSE)
+  
+  filenameparts_s <- strsplit(filename, "_", fixed = TRUE)
+  
+  sizes_s$Patient = filenameparts_s[[1]][1]
+  
+  sizes_s$sample_type = filenameparts_s[[1]][2]
+  
+  sizes_s$Exp = filenameparts_s[[1]][3]
+
+  print(head(sizes_s))
+  
+  insert_size_s[[filename]] = sizes_s
+  
+}
+
+sizes_all_s = bind_rows(insert_size_s)
+colnames(sizes_all_s)[1:5] <- c("insert_size", "All_Reads.fr_count", "All_Reads.rf_count", "All_Reads.tandem_count", "Fragment_count")
+sizes_all_s<-filter(sizes_all_s, insert_size < 1000)
+```
+
+Samtools insert sizes data 
+- Run for SNP
+```{r}
+setwd("\\Users\\Maham\\Desktop\\Aliza\\Imperial\\Project\\Project_2\\Preprocessing\\Insert_size_metrics_data\\SNP_panel_insert_sizes\\SNP_csv")
+
+filenames_s = list.files(pattern = "samtools_insert_size.csv")
+
+insert_size_s = list()
+
+for (filename in filenames_s){
+  
+  sizes_s <- read_csv(filename, col_names = FALSE)
+  
+  filenameparts_s <- strsplit(filename, "_", fixed = TRUE)
+  
+  sizes_s$Patient = filenameparts_s[[1]][1]
+  
+  sizes_s$sample_type = filenameparts_s[[1]][2]
+  
+  sizes_s$Sample_ID = filenameparts_s[[1]][3]
+  
+  sizes_s$Exp = filenameparts_s[[1]][4]
+
+  print(head(sizes_s))
+  
+  insert_size_s[[filename]] = sizes_s
+  
+}
+
+sizes_all_s = bind_rows(insert_size_s)
+colnames(sizes_all_s)[1:5] <- c("insert_size", "All_Reads.fr_count", "All_Reads.rf_count", "All_Reads.tandem_count", "Fragment_count")
+sizes_all_s<-filter(sizes_all_s, insert_size < 1000)
+
+```
+
+Save files
+```{r}
+write.csv(sizes_all_s, "sizes_all_s_Filtered1kb_updated2.csv", row.names=FALSE, quote=FALSE)
+write.csv(sizes_all_s, "sizes_all_s_notFiltered1kb_updated.csv", row.names=FALSE, quote=FALSE)
+write.csv(sizes_all_s, "SNP_sizes_all_s_Filtered1kb.csv", row.names=FALSE, quote=FALSE)
+
+```
+
+Calculate proportion of each insert size in all samples
+- Run for sWGS and TMB
+```{r}
+#insert size proportion
+sizes_total_s_new <- sizes_all_s %>%
+  
+  group_by(Patient,sample_type,Exp) %>%
+  
+  summarise(total_fragments = sum(All_Reads.fr_count))
+
+#save data as table
+#write.csv(sizes_total_s_new, "sizes_total_s_new_updated.csv", row.names=FALSE, quote=FALSE)
+#write.csv(sizes_total_s_new, "notFiltered1kb_sizes_total_s_new_updated.csv", row.names=FALSE, quote=FALSE)
+
+sizes2_s<-left_join(sizes_all_s,sizes_total_s_new,by=c("Patient","sample_type","Exp"))
+
+#calculation for proportion of fragments per insert size
+sizes2_s$proportion<-(sizes2_s$All_Reads.fr_count/sizes2_s$total_fragments)
+
+#save data as table
+#write.csv(sizes2_s, "sizes2_s_Filtered1kb_updated.csv", row.names=FALSE, quote=FALSE)
+#write.csv(sizes2_s, "sizes2_s_notFiltered1kb_updated.csv", row.names=FALSE, quote=FALSE)
+```
+
+Calculate proportion of each insert size in all samples
+- Run for SNP
+```{r}
+#insert size proportion
+sizes_total_s_new <- sizes_all_s %>%
+  
+  group_by(Patient,sample_type,Sample_ID) %>%
+  
+  summarise(total_fragments = sum(All_Reads.fr_count))
+
+#save data as table
+#write.csv(sizes_total_s_new, "sizes_total_s_new_updated.csv", row.names=FALSE, quote=FALSE)
+#write.csv(sizes_total_s_new, "notFiltered1kb_sizes_total_s_new_updated.csv", row.names=FALSE, quote=FALSE)
+
+sizes2_s<-left_join(sizes_all_s,sizes_total_s_new,by=c("Patient","sample_type","Sample_ID"))
+
+#calculation for proportion of fragments per insert size
+sizes2_s$proportion<-(sizes2_s$All_Reads.fr_count/sizes2_s$total_fragments)
+
+#save data as table
+#write.csv(sizes2_s, "sizes2_s_Filtered1kb_updated.csv", row.names=FALSE, quote=FALSE)
+#write.csv(sizes2_s, "sizes2_s_notFiltered1kb_updated.csv", row.names=FALSE, quote=FALSE)
+
+```
+
+Calculate proportion of insert sizes for all fragment ranges
+- Run for sWGS and TMB
+```{r}
+#50-155bp
+filtered_sizes2_50_155<-sizes2_s[which(sizes2_s$insert_size >= 50), ]
+filtered_sizes2_50_155<-filtered_sizes2_50_155[which(filtered_sizes2_50_155$insert_size <= 155), ]
+
+filtered_sizes2_50_155_new <- filtered_sizes2_50_155%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_50_155bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_50_155_updated<-left_join(filtered_sizes2_50_155,filtered_sizes2_50_155_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_50_155_updated$filtered_proportion_50_155bp<-((filtered_sizes2_50_155_updated$total_filtered_fragments_50_155bp/filtered_sizes2_50_155_updated$total_fragments)*100)
+
+
+#90-155bp
+filtered_sizes2_90_155<-sizes2_s[which(sizes2_s$insert_size >= 90), ]
+filtered_sizes2_90_155<-filtered_sizes2_90_155[which(filtered_sizes2_90_155$insert_size <= 155), ]
+
+filtered_sizes2_90_155_new <- filtered_sizes2_90_155%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_90_155bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_90_155_updated<-left_join(filtered_sizes2_90_155,filtered_sizes2_90_155_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_90_155_updated$filtered_proportion_90_155bp<-((filtered_sizes2_90_155_updated$total_filtered_fragments_90_155bp/filtered_sizes2_90_155_updated$total_fragments)*100)
+
+
+#<155bp
+filtered_sizes2_155<-sizes2_s[which(sizes2_s$insert_size >= 0), ]
+filtered_sizes2_155<-filtered_sizes2_155[which(filtered_sizes2_155$insert_size <= 155), ]
+
+filtered_sizes2_155_new <- filtered_sizes2_155%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_155bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_155_updated<-left_join(filtered_sizes2_155,filtered_sizes2_155_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_155_updated$filtered_proportion_155bp<-((filtered_sizes2_155_updated$total_filtered_fragments_155bp/filtered_sizes2_155_updated$total_fragments)*100)
+
+ 
+#50-140bp
+filtered_sizes2_50_140<-sizes2_s[which(sizes2_s$insert_size >= 50), ]
+filtered_sizes2_50_140<-filtered_sizes2_50_140[which(filtered_sizes2_50_140$insert_size <= 140), ]
+
+filtered_sizes2_50_140_new <- filtered_sizes2_50_140%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_50_140bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_50_140_updated<-left_join(filtered_sizes2_50_140,filtered_sizes2_50_140_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_50_140_updated$filtered_proportion_50_140bp<-((filtered_sizes2_50_140_updated$total_filtered_fragments_50_140bp/filtered_sizes2_50_140_updated$total_fragments)*100)
+
+
+#90-140bp
+filtered_sizes2_90_140<-sizes2_s[which(sizes2_s$insert_size >= 90), ]
+filtered_sizes2_90_140<-filtered_sizes2_90_140[which(filtered_sizes2_90_140$insert_size <= 140), ]
+
+filtered_sizes2_90_140_new <- filtered_sizes2_90_140%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_90_140bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_90_140_updated<-left_join(filtered_sizes2_90_140,filtered_sizes2_90_140_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_90_140_updated$filtered_proportion_90_140bp<-((filtered_sizes2_90_140_updated$total_filtered_fragments_90_140bp/filtered_sizes2_90_140_updated$total_fragments)*100)
+
+
+#<140bp
+filtered_sizes2_140<-sizes2_s[which(sizes2_s$insert_size >= 0), ]
+filtered_sizes2_140<-filtered_sizes2_140[which(filtered_sizes2_140$insert_size <= 140), ]
+
+filtered_sizes2_140_new <- filtered_sizes2_140%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_140bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_140_updated<-left_join(filtered_sizes2_140,filtered_sizes2_140_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_140_updated$filtered_proportion_140bp<-((filtered_sizes2_140_updated$total_filtered_fragments_140bp/filtered_sizes2_140_updated$total_fragments)*100)
+
+
+#50-145bp
+filtered_sizes2_50_145<-sizes2_s[which(sizes2_s$insert_size >= 50), ]
+filtered_sizes2_50_145<-filtered_sizes2_50_145[which(filtered_sizes2_50_145$insert_size <= 145), ]
+
+filtered_sizes2_50_145_new <- filtered_sizes2_50_145%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_50_145bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_50_145_updated<-left_join(filtered_sizes2_50_145,filtered_sizes2_50_145_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_50_145_updated$filtered_proportion_50_145bp<-((filtered_sizes2_50_145_updated$total_filtered_fragments_50_145bp/filtered_sizes2_50_145_updated$total_fragments)*100)
+
+
+#90-145bp
+filtered_sizes2_90_145<-sizes2_s[which(sizes2_s$insert_size >= 90), ]
+filtered_sizes2_90_145<-filtered_sizes2_90_145[which(filtered_sizes2_90_145$insert_size <= 145), ]
+
+filtered_sizes2_90_145_new <- filtered_sizes2_90_145%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_90_145bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_90_145_updated<-left_join(filtered_sizes2_90_145,filtered_sizes2_90_145_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_90_145_updated$filtered_proportion_90_145bp<-((filtered_sizes2_90_145_updated$total_filtered_fragments_90_145bp/filtered_sizes2_90_145_updated$total_fragments)*100)
+
+
+#<145bp
+filtered_sizes2_145<-sizes2_s[which(sizes2_s$insert_size >= 0), ]
+filtered_sizes2_145<-filtered_sizes2_145[which(filtered_sizes2_145$insert_size <= 145), ]
+
+filtered_sizes2_145_new <- filtered_sizes2_145%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_145bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_145_updated<-left_join(filtered_sizes2_145,filtered_sizes2_145_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_145_updated$filtered_proportion_145bp<-((filtered_sizes2_145_updated$total_filtered_fragments_145bp/filtered_sizes2_145_updated$total_fragments)*100)
+
+
+#50-150bp
+filtered_sizes2_50_150<-sizes2_s[which(sizes2_s$insert_size >= 50), ]
+filtered_sizes2_50_150<-filtered_sizes2_50_150[which(filtered_sizes2_50_150$insert_size <= 150), ]
+
+filtered_sizes2_50_150_new <- filtered_sizes2_50_150%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_50_150bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_50_150_updated<-left_join(filtered_sizes2_50_150,filtered_sizes2_50_150_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_50_150_updated$filtered_proportion_50_150bp<-((filtered_sizes2_50_150_updated$total_filtered_fragments_50_150bp/filtered_sizes2_50_150_updated$total_fragments)*100)
+
+
+#90-150bp
+filtered_sizes2_90_150<-sizes2_s[which(sizes2_s$insert_size >= 90), ]
+filtered_sizes2_90_150<-filtered_sizes2_90_150[which(filtered_sizes2_90_150$insert_size <= 150), ]
+
+filtered_sizes2_90_150_new <- filtered_sizes2_90_150%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_90_150bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_90_150_updated<-left_join(filtered_sizes2_90_150,filtered_sizes2_90_150_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_90_150_updated$filtered_proportion_90_150bp<-((filtered_sizes2_90_150_updated$total_filtered_fragments_90_150bp/filtered_sizes2_90_150_updated$total_fragments)*100)
+
+
+#<150bp
+filtered_sizes2_150<-sizes2_s[which(sizes2_s$insert_size >= 0), ]
+filtered_sizes2_150<-filtered_sizes2_150[which(filtered_sizes2_150$insert_size <= 150), ]
+
+filtered_sizes2_150_new <- filtered_sizes2_150%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_150bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_150_updated<-left_join(filtered_sizes2_150,filtered_sizes2_150_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_150_updated$filtered_proportion_150bp<-((filtered_sizes2_150_updated$total_filtered_fragments_150bp/filtered_sizes2_150_updated$total_fragments)*100)
+
+
+#160-179bp
+filtered_sizes2_160_179<-sizes2_s[which(sizes2_s$insert_size >= 160), ]
+filtered_sizes2_160_179<-filtered_sizes2_160_179[which(filtered_sizes2_160_179$insert_size <= 179), ]
+
+filtered_sizes2_160_179_new <- filtered_sizes2_160_179%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_160_179bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_160_179_updated<-left_join(filtered_sizes2_160_179,filtered_sizes2_160_179_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_160_179_updated$filtered_proportion_160_179bp<-((filtered_sizes2_160_179_updated$total_filtered_fragments_160_179bp/filtered_sizes2_160_179_updated$total_fragments)*100)
+
+
+#180-220bp
+filtered_sizes2_180_220<-sizes2_s[which(sizes2_s$insert_size >= 180), ]
+filtered_sizes2_180_220<-filtered_sizes2_180_220[which(filtered_sizes2_180_220$insert_size <= 220), ]
+
+filtered_sizes2_180_220_new <- filtered_sizes2_180_220%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_180_220bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_180_220_updated<-left_join(filtered_sizes2_180_220,filtered_sizes2_180_220_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_180_220_updated$filtered_proportion_180_220bp<-((filtered_sizes2_180_220_updated$total_filtered_fragments_180_220bp/filtered_sizes2_180_220_updated$total_fragments)*100)
+
+
+#250-320bp
+filtered_sizes2_250_320<-sizes2_s[which(sizes2_s$insert_size >= 250), ]
+filtered_sizes2_250_320<-filtered_sizes2_250_320[which(filtered_sizes2_250_320$insert_size <= 320), ]
+
+filtered_sizes2_250_320_new <- filtered_sizes2_250_320%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_250_320bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_250_320_updated<-left_join(filtered_sizes2_250_320,filtered_sizes2_250_320_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_250_320_updated$filtered_proportion_250_320bp<-((filtered_sizes2_250_320_updated$total_filtered_fragments_250_320bp/filtered_sizes2_250_320_updated$total_fragments)*100)
+
+
+#270-320bp
+filtered_sizes2_270_320<-sizes2_s[which(sizes2_s$insert_size >= 270), ]
+filtered_sizes2_270_320<-filtered_sizes2_250_320[which(filtered_sizes2_250_320$insert_size <= 320), ]
+
+filtered_sizes2_270_320_new <- filtered_sizes2_270_320%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_270_320bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_270_320_updated<-left_join(filtered_sizes2_270_320,filtered_sizes2_270_320_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_270_320_updated$filtered_proportion_270_320bp<-((filtered_sizes2_270_320_updated$total_filtered_fragments_270_320bp/filtered_sizes2_270_320_updated$total_fragments)*100)
+
+
+#150-160bp
+filtered_sizes2_150_160<-sizes2_s[which(sizes2_s$insert_size >= 150), ]
+filtered_sizes2_150_160<-filtered_sizes2_150_160[which(filtered_sizes2_150_160$insert_size <= 160), ]
+
+filtered_sizes2_150_160_new <- filtered_sizes2_150_160%>% 
+  group_by(Patient,sample_type,Exp) %>%
+  summarize(total_filtered_fragments_150_160bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_150_160_updated<-left_join(filtered_sizes2_150_160,filtered_sizes2_150_160_new,by=c("Patient","sample_type","Exp"))
+
+filtered_sizes2_150_160_updated$filtered_proportion_150_160bp<-((filtered_sizes2_150_160_updated$total_filtered_fragments_150_160bp/filtered_sizes2_150_160_updated$total_fragments)*100)
+
+```
+
+Calculate proportion of insert sizes for all fragment ranges
+- Run for SNP
+```{r}
+#50-155bp
+filtered_sizes2_50_155<-sizes2_s[which(sizes2_s$insert_size >= 50), ]
+filtered_sizes2_50_155<-filtered_sizes2_50_155[which(filtered_sizes2_50_155$insert_size <= 155), ]
+
+filtered_sizes2_50_155_new <- filtered_sizes2_50_155%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_50_155bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_50_155_updated<-left_join(filtered_sizes2_50_155,filtered_sizes2_50_155_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_50_155_updated$filtered_proportion_50_155bp<-((filtered_sizes2_50_155_updated$total_filtered_fragments_50_155bp/filtered_sizes2_50_155_updated$total_fragments)*100)
+
+
+#90-155bp
+filtered_sizes2_90_155<-sizes2_s[which(sizes2_s$insert_size >= 90), ]
+filtered_sizes2_90_155<-filtered_sizes2_90_155[which(filtered_sizes2_90_155$insert_size <= 155), ]
+
+filtered_sizes2_90_155_new <- filtered_sizes2_90_155%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_90_155bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_90_155_updated<-left_join(filtered_sizes2_90_155,filtered_sizes2_90_155_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_90_155_updated$filtered_proportion_90_155bp<-((filtered_sizes2_90_155_updated$total_filtered_fragments_90_155bp/filtered_sizes2_90_155_updated$total_fragments)*100)
+
+
+#<155bp
+filtered_sizes2_155<-sizes2_s[which(sizes2_s$insert_size >= 0), ]
+filtered_sizes2_155<-filtered_sizes2_155[which(filtered_sizes2_155$insert_size <= 155), ]
+
+filtered_sizes2_155_new <- filtered_sizes2_155%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_155bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_155_updated<-left_join(filtered_sizes2_155,filtered_sizes2_155_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_155_updated$filtered_proportion_155bp<-((filtered_sizes2_155_updated$total_filtered_fragments_155bp/filtered_sizes2_155_updated$total_fragments)*100)
+
+ 
+#50-140bp
+filtered_sizes2_50_140<-sizes2_s[which(sizes2_s$insert_size >= 50), ]
+filtered_sizes2_50_140<-filtered_sizes2_50_140[which(filtered_sizes2_50_140$insert_size <= 140), ]
+
+filtered_sizes2_50_140_new <- filtered_sizes2_50_140%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_50_140bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_50_140_updated<-left_join(filtered_sizes2_50_140,filtered_sizes2_50_140_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_50_140_updated$filtered_proportion_50_140bp<-((filtered_sizes2_50_140_updated$total_filtered_fragments_50_140bp/filtered_sizes2_50_140_updated$total_fragments)*100)
+
+
+#90-140bp
+filtered_sizes2_90_140<-sizes2_s[which(sizes2_s$insert_size >= 90), ]
+filtered_sizes2_90_140<-filtered_sizes2_90_140[which(filtered_sizes2_90_140$insert_size <= 140), ]
+
+filtered_sizes2_90_140_new <- filtered_sizes2_90_140%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_90_140bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_90_140_updated<-left_join(filtered_sizes2_90_140,filtered_sizes2_90_140_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_90_140_updated$filtered_proportion_90_140bp<-((filtered_sizes2_90_140_updated$total_filtered_fragments_90_140bp/filtered_sizes2_90_140_updated$total_fragments)*100)
+
+
+#<140bp
+filtered_sizes2_140<-sizes2_s[which(sizes2_s$insert_size >= 0), ]
+filtered_sizes2_140<-filtered_sizes2_140[which(filtered_sizes2_140$insert_size <= 140), ]
+
+filtered_sizes2_140_new <- filtered_sizes2_140%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_140bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_140_updated<-left_join(filtered_sizes2_140,filtered_sizes2_140_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_140_updated$filtered_proportion_140bp<-((filtered_sizes2_140_updated$total_filtered_fragments_140bp/filtered_sizes2_140_updated$total_fragments)*100)
+
+
+#50-145bp
+filtered_sizes2_50_145<-sizes2_s[which(sizes2_s$insert_size >= 50), ]
+filtered_sizes2_50_145<-filtered_sizes2_50_145[which(filtered_sizes2_50_145$insert_size <= 145), ]
+
+filtered_sizes2_50_145_new <- filtered_sizes2_50_145%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_50_145bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_50_145_updated<-left_join(filtered_sizes2_50_145,filtered_sizes2_50_145_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_50_145_updated$filtered_proportion_50_145bp<-((filtered_sizes2_50_145_updated$total_filtered_fragments_50_145bp/filtered_sizes2_50_145_updated$total_fragments)*100)
+
+
+#90-145bp
+filtered_sizes2_90_145<-sizes2_s[which(sizes2_s$insert_size >= 90), ]
+filtered_sizes2_90_145<-filtered_sizes2_90_145[which(filtered_sizes2_90_145$insert_size <= 145), ]
+
+filtered_sizes2_90_145_new <- filtered_sizes2_90_145%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_90_145bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_90_145_updated<-left_join(filtered_sizes2_90_145,filtered_sizes2_90_145_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_90_145_updated$filtered_proportion_90_145bp<-((filtered_sizes2_90_145_updated$total_filtered_fragments_90_145bp/filtered_sizes2_90_145_updated$total_fragments)*100)
+
+
+#<145bp
+filtered_sizes2_145<-sizes2_s[which(sizes2_s$insert_size >= 0), ]
+filtered_sizes2_145<-filtered_sizes2_145[which(filtered_sizes2_145$insert_size <= 145), ]
+
+filtered_sizes2_145_new <- filtered_sizes2_145%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_145bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_145_updated<-left_join(filtered_sizes2_145,filtered_sizes2_145_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_145_updated$filtered_proportion_145bp<-((filtered_sizes2_145_updated$total_filtered_fragments_145bp/filtered_sizes2_145_updated$total_fragments)*100)
+
+
+#50-150bp
+filtered_sizes2_50_150<-sizes2_s[which(sizes2_s$insert_size >= 50), ]
+filtered_sizes2_50_150<-filtered_sizes2_50_150[which(filtered_sizes2_50_150$insert_size <= 150), ]
+
+filtered_sizes2_50_150_new <- filtered_sizes2_50_150%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_50_150bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_50_150_updated<-left_join(filtered_sizes2_50_150,filtered_sizes2_50_150_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_50_150_updated$filtered_proportion_50_150bp<-((filtered_sizes2_50_150_updated$total_filtered_fragments_50_150bp/filtered_sizes2_50_150_updated$total_fragments)*100)
+
+
+#90-150bp
+filtered_sizes2_90_150<-sizes2_s[which(sizes2_s$insert_size >= 90), ]
+filtered_sizes2_90_150<-filtered_sizes2_90_150[which(filtered_sizes2_90_150$insert_size <= 150), ]
+
+filtered_sizes2_90_150_new <- filtered_sizes2_90_150%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_90_150bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_90_150_updated<-left_join(filtered_sizes2_90_150,filtered_sizes2_90_150_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_90_150_updated$filtered_proportion_90_150bp<-((filtered_sizes2_90_150_updated$total_filtered_fragments_90_150bp/filtered_sizes2_90_150_updated$total_fragments)*100)
+
+
+#<150bp
+filtered_sizes2_150<-sizes2_s[which(sizes2_s$insert_size >= 0), ]
+filtered_sizes2_150<-filtered_sizes2_150[which(filtered_sizes2_150$insert_size <= 150), ]
+
+filtered_sizes2_150_new <- filtered_sizes2_150%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_150bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_150_updated<-left_join(filtered_sizes2_150,filtered_sizes2_150_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_150_updated$filtered_proportion_150bp<-((filtered_sizes2_150_updated$total_filtered_fragments_150bp/filtered_sizes2_150_updated$total_fragments)*100)
+
+
+#160-179bp
+filtered_sizes2_160_179<-sizes2_s[which(sizes2_s$insert_size >= 160), ]
+filtered_sizes2_160_179<-filtered_sizes2_160_179[which(filtered_sizes2_160_179$insert_size <= 179), ]
+
+filtered_sizes2_160_179_new <- filtered_sizes2_160_179%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_160_179bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_160_179_updated<-left_join(filtered_sizes2_160_179,filtered_sizes2_160_179_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_160_179_updated$filtered_proportion_160_179bp<-((filtered_sizes2_160_179_updated$total_filtered_fragments_160_179bp/filtered_sizes2_160_179_updated$total_fragments)*100)
+
+
+#180-220bp
+filtered_sizes2_180_220<-sizes2_s[which(sizes2_s$insert_size >= 180), ]
+filtered_sizes2_180_220<-filtered_sizes2_180_220[which(filtered_sizes2_180_220$insert_size <= 220), ]
+
+filtered_sizes2_180_220_new <- filtered_sizes2_180_220%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_180_220bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_180_220_updated<-left_join(filtered_sizes2_180_220,filtered_sizes2_180_220_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_180_220_updated$filtered_proportion_180_220bp<-((filtered_sizes2_180_220_updated$total_filtered_fragments_180_220bp/filtered_sizes2_180_220_updated$total_fragments)*100)
+
+
+#250-320bp
+filtered_sizes2_250_320<-sizes2_s[which(sizes2_s$insert_size >= 250), ]
+filtered_sizes2_250_320<-filtered_sizes2_250_320[which(filtered_sizes2_250_320$insert_size <= 320), ]
+
+filtered_sizes2_250_320_new <- filtered_sizes2_250_320%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_250_320bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_250_320_updated<-left_join(filtered_sizes2_250_320,filtered_sizes2_250_320_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_250_320_updated$filtered_proportion_250_320bp<-((filtered_sizes2_250_320_updated$total_filtered_fragments_250_320bp/filtered_sizes2_250_320_updated$total_fragments)*100)
+
+
+#270-320bp
+filtered_sizes2_270_320<-sizes2_s[which(sizes2_s$insert_size >= 270), ]
+filtered_sizes2_270_320<-filtered_sizes2_250_320[which(filtered_sizes2_250_320$insert_size <= 320), ]
+
+filtered_sizes2_270_320_new <- filtered_sizes2_270_320%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_270_320bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_270_320_updated<-left_join(filtered_sizes2_270_320,filtered_sizes2_270_320_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_270_320_updated$filtered_proportion_270_320bp<-((filtered_sizes2_270_320_updated$total_filtered_fragments_270_320bp/filtered_sizes2_270_320_updated$total_fragments)*100)
+
+
+#150-160bp
+filtered_sizes2_150_160<-sizes2_s[which(sizes2_s$insert_size >= 150), ]
+filtered_sizes2_150_160<-filtered_sizes2_150_160[which(filtered_sizes2_150_160$insert_size <= 160), ]
+
+filtered_sizes2_150_160_new <- filtered_sizes2_150_160%>% 
+  group_by(Patient,sample_type,Sample_ID) %>%
+  summarize(total_filtered_fragments_150_160bp = sum(All_Reads.fr_count))
+
+filtered_sizes2_150_160_updated<-left_join(filtered_sizes2_150_160,filtered_sizes2_150_160_new,by=c("Patient","sample_type","Sample_ID"))
+
+filtered_sizes2_150_160_updated$filtered_proportion_150_160bp<-((filtered_sizes2_150_160_updated$total_filtered_fragments_150_160bp/filtered_sizes2_150_160_updated$total_fragments)*100)
+
+```
+
+All filtered fragment proportion data in one data frame
+```{r}
+#no duplicates in data, unique for each case
+All_fragment_data<-sizes_total_s_new
+
+All_fragment_data["Proportion_50_155bp"] <- unique(filtered_sizes2_50_155_updated$filtered_proportion_50_155bp)
+All_fragment_data["Proportion_90_155bp"] <- unique(filtered_sizes2_90_155_updated$filtered_proportion_90_155bp)
+All_fragment_data["Proportion_below_155bp"] <- unique(filtered_sizes2_155_updated$filtered_proportion_155bp)
+
+All_fragment_data["Proportion_50_145bp"] <- unique(filtered_sizes2_50_145_updated$filtered_proportion_50_145bp)
+All_fragment_data["Proportion_90_145bp"] <- unique(filtered_sizes2_90_145_updated$filtered_proportion_90_145bp)
+All_fragment_data["Proportion_below_145bp"] <- unique(filtered_sizes2_145_updated$filtered_proportion_145bp)
+
+All_fragment_data["Proportion_50_140bp"] <- unique(filtered_sizes2_50_140_updated$filtered_proportion_50_140bp)
+All_fragment_data["Proportion_90_140bp"] <- unique(filtered_sizes2_90_140_updated$filtered_proportion_90_140bp)
+All_fragment_data["Proportion_below_140bp"] <- unique(filtered_sizes2_140_updated$filtered_proportion_140bp)
+
+All_fragment_data["Proportion_50_150bp"] <- unique(filtered_sizes2_50_150_updated$filtered_proportion_50_150bp)
+All_fragment_data["Proportion_90_150bp"] <- unique(filtered_sizes2_90_150_updated$filtered_proportion_90_150bp)
+All_fragment_data["Proportion_below_150bp"] <- unique(filtered_sizes2_150_updated$filtered_proportion_150bp)
+
+All_fragment_data["Proportion_160_179bp"] <- unique(filtered_sizes2_160_179_updated$filtered_proportion_160_179bp)
+All_fragment_data["Proportion_180_220bp"] <- unique(filtered_sizes2_180_220_updated$filtered_proportion_180_220bp)
+All_fragment_data["Proportion_250_320bp"] <- unique(filtered_sizes2_250_320_updated$filtered_proportion_250_320bp)
+
+All_fragment_data["Proportion_270_320bp"] <- unique(filtered_sizes2_270_320_updated$filtered_proportion_270_320bp)
+All_fragment_data["Proportion_150_160bp"] <- unique(filtered_sizes2_150_160_updated$filtered_proportion_150_160bp)
+
+
+#write.csv(All_fragment_data, "All_fragment_data_3.csv", row.names=FALSE, quote=FALSE)
+#write.csv(All_fragment_data, "All_fragment_data_2_notFiltered1kb_updated.csv", row.names=FALSE, quote=FALSE)
+
+```
+
+All insert size data in one data frame
+```{r}
+
+All_insert_size_data<-sizes2_s
+
+#write.csv(All_insert_size_data, "All_insert_size_data_Filtered1kb_updated2.csv", row.names=FALSE, quote=FALSE)
+#write.csv(All_insert_size_data, "All_insert_size_data_notFiltered1kb_updated.csv", row.names=FALSE, quote=FALSE)
+
+```
+
+Get the clinical information
+```{r}
+#retrieve clinical info
+samples<-read.csv("cfDNA_libraries_5.csv")
+
+#filter the clinical data to get only samples where 'sample type' = cfDNA
+filtered_samples<-filter(samples,sample_type=="cfDNA")
+
+#to get all sWGS samples
+WGS_samples<-filter(filtered_samples,sWGS!="No") # don't run for SNP data
+
+#to get all samples that have sWGS, TMB, and SNP
+WGS_samples<-filter(filtered_samples,sWGS!="No" & Pan_cancer_panel!="No" & SNP_panel!="No") # don't run for SNP data
+
+#to get all samples that have sWGS and SNP
+WGS_samples<-filter(filtered_samples,sWGS!="No" & SNP_panel!="No") # don't run for SNP data
+
+#run for SNP data
+WGS_samples<-filtered_samples
+
+#data for creating insert size proportion plots
+filtered_combined_all_s<-left_join(All_insert_size_data,WGS_samples, by=c("Patient", "sample_type"))
+#use for SNP data
+filtered_combined_all_s<-left_join(All_insert_size_data,WGS_samples, by=c("Patient", "sample_type", "Sample_ID"))
+
+#data for creating the global fragment analysis plots (boxplots and correlation plots)
+filtered_combined_all_s<-left_join(All_fragment_data,WGS_samples, by=c("Patient", "sample_type"))
+#use for SNP data
+filtered_combined_all_s<-left_join(All_fragment_data,WGS_samples, by=c("Patient", "sample_type", "Sample_ID"))
+
+#various filtering of the data
+
+#just cfDNA samples
+filtered_combined_all_s_cfDNA<-filter(filtered_combined_all_s,sample_type=="cfDNA")
+
+#just sWGS5 samples
+filtered_combined_all_s_cfDNA_sWGS5<-filter(filtered_combined_all_s,sWGS=="sWGS5")
+
+#just cfDNA + non-gestational samples
+filtered_combined_s_NG<-filter(filtered_combined_all_s_cfDNA,Tumour_origin=="Non-gestational") 
+
+
+#only samples which have data in library
+filtered_combined_all_s2<-filter(filtered_combined_all_s,Sample!="No")
+
+#for samples with sWGS, TMB, and SNP data
+filtered_all_sWGS_TMB_SNP<-filtered_combined_all_s2
+filtered_all_sWGS_TMB_SNP<-filter(filtered_all_sWGS_TMB_SNP,Patient!="GTD009" & Patient!="GTD018" & Patient!="GTD025" & Patient!="NP07")
+
+#for samples with sWGS and SNP data
+filtered_all_sWGS_TMB_SNP<-filtered_combined_all_s2
+
+#run for SNP data
+filtered_sWGS_all_s2_SNP<-filtered_combined_all_s2
+
+#just cfDNA samples (sWGS, TMB, SNP)
+filtered_combined_all_s2_cfDNA<-filter(filtered_combined_all_s2,sample_type=="cfDNA")
+
+#just cfDNA sWGS samples
+filtered_sWGS_all_s2_cfDNA<-filter(filtered_combined_all_s2_cfDNA,Exp=="sWGS")
+
+#just cfDNA TMB samples (which also have sWGS data)
+filtered_sWGS_all_s2_TMB<-filter(filtered_combined_all_s2_cfDNA,Exp=="TMB")
+
+#just cfDNA SNP samples (which also have SNP data)
+filtered_sWGS_all_s2_SNP<-filter(filtered_combined_all_s2_cfDNA,Exp=="SNP")
+
+#just non-gestational cfDNA samples (sWGS and TMB)
+filtered_combined_all_s2_cfDNA_NG<-filter(filtered_combined_all_s2_cfDNA,Tumour_origin=="Non-gestational")
+
+```
+
+Save data as tables
+```{r}
+write.csv(filtered_sWGS_all_s2_cfDNA, "All_fragment_data_filtered1kb_sWGS_all_s2_cfDNA_updated.csv", row.names=FALSE, quote=FALSE)
+#write.csv(filtered_sWGS_all_s2_cfDNA, "notfiltered1kb_sWGS_all_s2_cfDNA_2_updated.csv", row.names=FALSE, quote=FALSE)
+
+write.csv(filtered_sWGS_all_s2_TMB, "All_fragment_data_filtered1kb_sWGS_all_s2_TMB_updated.csv", row.names=FALSE, quote=FALSE)
+#write.csv(filtered_sWGS_all_s2_TMB, "notfiltered1kb_sWGS_all_s2_TMB_2_updated.csv", row.names=FALSE, quote=FALSE)
+
+write.csv(filtered_sWGS_all_s2_SNP, "All_fragment_data_filtered1kb_sWGS_all_s2_SNP_updated3.csv", row.names=FALSE, quote=FALSE)
+#write.csv(filtered_sWGS_all_s2_SNP, "notfiltered1kb_sWGS_all_s2_SNP.csv", row.names=FALSE, quote=FALSE)
+
+```
+
+Set plot theme for insert size proportion plots
+```{r}
+theme_set(
+  theme_bw()
+  )
+```
+
+sWGS fragment size profile plots
+```{r}
+#order the estimated tumour content
+filtered_sWGS_all_s2_cfDNA$Estimated_tumour_percent_bin <- factor(filtered_sWGS_all_s2_cfDNA$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+p1 <- ggplot(filtered_sWGS_all_s2_cfDNA, aes(x=insert_size, y=proportion, color=Tumour_origin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Patient)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p1 + ggtitle("sWGS")
+
+ggsave("sWGS_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_TumourOrigin.png", width = 20, height = 10, dpi=700)
+
+p2 <- ggplot(filtered_sWGS_all_s2_cfDNA, aes(x=insert_size, y=proportion, color=Estimated_tumour_percent_bin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Patient)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p2 + ggtitle("sWGS")
+
+ggsave("sWGS_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_Estimated_tumour_percent_bin.png", width = 20, height = 10, dpi=700)
+
+p3 <- ggplot(filtered_sWGS_all_s2_cfDNA, aes(x=insert_size, y=proportion, color=Tumour))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Patient)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p3 + ggtitle("sWGS")
+
+ggsave("sWGS_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_Tumour.png", width = 20, height = 10, dpi=700)
+
+p4 <- ggplot(filtered_sWGS_all_s2_cfDNA, aes(x=insert_size, y=proportion, color=Estimated_tumour_percent_bin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=c(150, 166, 160, 179, 180, 220, 250, 320),linetype="dashed")+
+  xlab("Fragment Size")+
+  ylab("Proportion")+
+  labs(color = "Estimated ctDNA (%)")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "top",
+          legend.text = element_text(size = 30),
+          legend.title = element_text(size = 30))
+      
+p4 + ggtitle("sWGS")
+
+ggsave("sWGS_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_EsTumContent_v1_3.png", width = 15, height = 10, dpi=700)
+
+ggsave("sWGS_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_EsTumContent_v2_3.png", width = 15, height = 10, device = "tiff", dpi=700)
+
+
+p5 <- ggplot(filtered_sWGS_all_s2_cfDNA, aes(x=insert_size, y=proportion, color=Tumour))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_grid(Estimated_tumour_percent_bin ~ Tumour_origin)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p5 + ggtitle("sWGS")
+
+ggsave("sWGS_FacetGrid_Tum.Ori_Est.Tum.Con_InsertSize_vs_Proportion_ColourBy_Tumour.png", width = 20, height = 10, dpi=700)
+
+p6 <- ggplot(filtered_sWGS_all_s2_cfDNA, aes(x=insert_size, y=proportion, color=Tumour_origin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=c(150, 166, 160, 179, 180, 220, 250, 320),linetype="dashed")+
+  xlab("Fragment size")+
+  ylab("Proportion")+
+  theme(text = element_text(size = 25),
+          axis.title.x = element_text(size = 22),
+          axis.title.y = element_text(size = 22))
+
+p6 + ggtitle("sWGS")
+
+ggsave("sWGS_InsertSize_vs_Proportion_ColourBy_Tumour_origin2.png", width = 20, height = 10, dpi=700)
+
+p7 <- ggplot(filtered_sWGS_all_s2_cfDNA, aes(x=insert_size, y=proportion, color=Tumour))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p7 + ggtitle("sWGS")
+
+ggsave("sWGS_InsertSize_vs_Proportion_ColourBy_Tumour.png", width = 20, height = 10, dpi=700)
+
+```
+
+TMB fragment size profile plots
+```{r}
+#order the estimated tumour content
+filtered_sWGS_all_s2_TMB$Estimated_tumour_percent_bin <- factor(filtered_sWGS_all_s2_TMB$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+p1 <- ggplot(filtered_sWGS_all_s2_TMB, aes(x=insert_size, y=proportion, color=Tumour_origin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Patient)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p1 + ggtitle("TMB")
+
+ggsave("TMB_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_TumourOrigin.png", width = 20, height = 10, dpi=700)
+
+p2 <- ggplot(filtered_sWGS_all_s2_TMB, aes(x=insert_size, y=proportion, color=Estimated_tumour_percent_bin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Patient)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p2 + ggtitle("TMB")
+
+ggsave("TMB_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_Estimated_tumour_percent_bin.png", width = 20, height = 10, dpi=700)
+
+p3 <- ggplot(filtered_sWGS_all_s2_TMB, aes(x=insert_size, y=proportion, color=Tumour))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Patient)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p3 + ggtitle("TMB")
+
+ggsave("TMB_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_Tumour.png", width = 20, height = 10, dpi=700)
+
+p4 <- ggplot(filtered_sWGS_all_s2_TMB, aes(x=insert_size, y=proportion, color=Estimated_tumour_percent_bin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p4 + ggtitle("TMB")
+
+ggsave("TMB_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_EsTumContent.png", width = 20, height = 10, dpi=700)
+
+p5 <- ggplot(filtered_sWGS_all_s2_TMB, aes(x=insert_size, y=proportion, color=Tumour))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_grid(Estimated_tumour_percent_bin ~ Tumour_origin)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p5 + ggtitle("TMB")
+
+ggsave("TMB_FacetGrid_Tum.Ori_Est.Tum.Con_InsertSize_vs_Proportion_ColourBy_Tumour.png", width = 20, height = 10, dpi=700)
+
+p6 <- ggplot(filtered_sWGS_all_s2_TMB, aes(x=insert_size, y=proportion, color=Tumour_origin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p6 + ggtitle("TMB")
+
+ggsave("TMB_InsertSize_vs_Proportion_ColourBy_Tumour_origin.png", width = 20, height = 10, dpi=700)
+
+p7 <- ggplot(filtered_sWGS_all_s2_TMB, aes(x=insert_size, y=proportion, color=Tumour))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p7 + ggtitle("TMB")
+
+ggsave("TMB_InsertSize_vs_Proportion_ColourBy_Tumour.png", width = 20, height = 10, dpi=700)
+
+```
+
+SNP fragment size profile plots
+```{r}
+#order the estimated tumour content
+filtered_sWGS_all_s2_SNP$Estimated_tumour_percent_bin <- factor(filtered_sWGS_all_s2_SNP$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+p1 <- ggplot(filtered_sWGS_all_s2_SNP, aes(x=insert_size, y=proportion, color=Tumour_origin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Sample)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p1 + ggtitle("SNP")
+
+ggsave("SNP_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_TumourOrigin.png", width = 20, height = 10, dpi=700)
+
+p2 <- ggplot(filtered_sWGS_all_s2_SNP, aes(x=insert_size, y=proportion, color=Estimated_tumour_percent_bin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Sample)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p2 + ggtitle("SNP")
+
+ggsave("SNP_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_Estimated_tumour_percent_bin.png", width = 20, height = 10, dpi=700)
+
+p3 <- ggplot(filtered_sWGS_all_s2_SNP, aes(x=insert_size, y=proportion, color=Tumour))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Sample)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p3 + ggtitle("SNP")
+
+ggsave("SNP_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_Tumour.png", width = 20, height = 10, dpi=700)
+
+p4 <- ggplot(filtered_sWGS_all_s2_SNP, aes(x=insert_size, y=proportion, color=Estimated_tumour_percent_bin))+
+  geom_point(size = 10)+
+  xlim(50,400)+
+  geom_vline(xintercept=c(150, 166, 160, 179, 180, 220, 250, 320),linetype="dashed")+
+  xlab("Fragment size")+
+  ylab("Proportion")+
+  labs(color = "Estimated ctDNA (%)")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "top",
+          legend.text = element_text(size = 30),
+          legend.title = element_text(size = 30))
+
+p4 + ggtitle("SNP")
+
+ggsave("SNP_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_EsTumContent_v1_1.png", width = 20, height = 10, dpi=700)
+
+ggsave("SNP_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_EsTumContent_v2_1.png", width = 20, height = 10, device = "tiff", dpi=700)
+
+
+p5 <- ggplot(filtered_sWGS_all_s2_SNP, aes(x=insert_size, y=proportion, color=Tumour))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_grid(Estimated_tumour_percent_bin ~ Tumour_origin)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p5 + ggtitle("SNP")
+
+ggsave("SNP_FacetGrid_Tum.Ori_Est.Tum.Con_InsertSize_vs_Proportion_ColourBy_Tumour.png", width = 20, height = 10, dpi=700)
+
+p6 <- ggplot(filtered_sWGS_all_s2_SNP, aes(x=insert_size, y=proportion, color=Tumour_origin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p6 + ggtitle("SNP")
+
+ggsave("SNP_InsertSize_vs_Proportion_ColourBy_Tumour_origin.png", width = 20, height = 10, dpi=700)
+
+p7 <- ggplot(filtered_sWGS_all_s2_SNP, aes(x=insert_size, y=proportion, color=Tumour))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p7 + ggtitle("SNP")
+
+ggsave("SNP_InsertSize_vs_Proportion_ColourBy_Tumour.png", width = 20, height = 10, dpi=700)
+
+```
+
+Fragment size profile plots for samples with data from sWGS and SNP)
+```{r}
+#order the estimated tumour content
+filtered_all_sWGS_TMB_SNP$Estimated_tumour_percent_bin <- factor(filtered_all_sWGS_TMB_SNP$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+#plot 1 All
+ggplot(filtered_all_sWGS_TMB_SNP, aes(x=insert_size, y=proportion, color=Estimated_tumour_percent_bin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Exp)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+ggsave("All_FacetWrap_Exp_InsertSize_vs_Proportion_ColourBy_Es.TumourContent.png", width = 20, height = 10, dpi=700)
+
+#plot 2 All
+ggplot(filtered_all_sWGS_TMB_SNP, aes(x=insert_size, y=proportion, color=Tumour_origin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Exp)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+ggsave("All_FacetWrap_Exp_InsertSize_vs_Proportion_ColourBy_TumourOrigin.png", width = 20, height = 10, dpi=700)
+
+#plot 4 All
+ggplot(filtered_all_sWGS_TMB_SNP, aes(x=insert_size, y=proportion, color=Tumour))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Exp)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+ggsave("All_FacetWrap_Exp_InsertSize_vs_Proportion_ColourBy_Tumour.png", width = 20, height = 10, dpi=700)
+
+#plot 5 All
+ggplot(filtered_all_sWGS_TMB_SNP, aes(x=insert_size, y=proportion, color=Exp))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Patient)+
+  xlab("Fragment size")+
+  ylab("Proportion")+
+  theme(text = element_text(size = 25))
+
+ggsave("All_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_Exp2.png", width = 20, height = 10, dpi=700)
+
+#plot 6 - filtered (<1000 bp) and unfiltered insert size plots
+
+#filtered (<1000 bp) All
+ggplot(filtered_all_sWGS_TMB_SNP, aes(x=insert_size, y=proportion, color=Exp))+
+  geom_point()+
+  #xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Patient)
+
+ggsave("All_Filtered1kb_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_Exp.png", width = 20, height = 10, dpi=700)
+
+#unfiltered All
+ggplot(filtered_all_sWGS_TMB_SNP, aes(x=insert_size, y=proportion, color=Exp))+
+  geom_point()+
+  #xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_wrap(~Patient)
+
+ggsave("All_notFiltered1kb_FacetWrap_Patient_InsertSize_vs_Proportion_ColourBy_Exp.png", width = 20, height = 10, dpi=700)
+
+#plot 7 All facet grid
+ggplot(filtered_all_sWGS_TMB_SNP, aes(x=insert_size, y=proportion, color=Exp))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_grid(Estimated_tumour_percent_bin ~ Tumour_origin)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+ggsave("All_FacetGrid_Tum.Ori_Est.Tum.Con_InsertSize_vs_Proportion_ColourBy_Exp.png", width = 20, height = 10, dpi=700)
+
+#plot 8 All facet grid 
+ggplot(filtered_all_sWGS_TMB_SNP, aes(x=insert_size, y=proportion, color=Exp))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_grid(Estimated_tumour_percent_bin ~ Tumour)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+ggsave("All_FacetGrid_Tumour_Est.Tum.Con_InsertSize_vs_Proportion_ColourBy_Exp.png", width = 20, height = 10, dpi=700)
+
+#plot 9 All
+ggplot(filtered_all_sWGS_TMB_SNP, aes(x=insert_size, y=proportion, color=Estimated_tumour_percent_bin))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_grid(Exp ~ Tumour_origin)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+ggsave("All_FacetGrid_Tum.Ori_Exp_InsertSize_vs_Proportion_ColourBy_Est.Tum.Con.png", width = 20, height = 10, dpi=700)
+
+#plot 10 All
+ggplot(filtered_all_sWGS_TMB_SNP, aes(x=insert_size, y=proportion, color=Patient))+
+  geom_point(size = 10)+
+  labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          #legend.position = "none",
+          legend.text = element_text(size = 25),
+          legend.title = element_text(size = 25))+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  facet_grid(~Exp)+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+ggsave("All_FacetGrid_Tumour_Exp_InsertSize_vs_Proportion_ColourBy_Est.Tum.Con_v1_2.png", width = 30, height = 10, dpi=700)
+
+ggsave("All_FacetGrid_Tumour_Exp_InsertSize_vs_Proportion_ColourBy_Est.Tum.Con_v2_2.png", width = 30, height = 10, device = "tiff", dpi=700)
+
+
+p11 <- ggplot(filtered_all_sWGS_TMB_SNP, aes(x=insert_size, y=proportion, color=Exp))+
+  geom_point()+
+  xlim(50,400)+
+  geom_vline(xintercept=166,linetype="dashed")+
+  xlab("Fragment size")+
+  ylab("Proportion")
+
+p11 + ggtitle("All")
+
+ggsave("All_InsertSize_vs_Proportion_ColourBy_Exp.png", width = 20, height = 10, dpi=700)
+
+```
+
+Global fragment size analysis
+
+For loop boxplot
+- Boxplots for all fragment ranges - sWGS, TMB, and SNP
+```{r}
+#assign the type of data
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+
+#different fragment ranges optimising the <150 bp fragment range
+Fragment_name_indices <- which(names(Fragment_data2)%in%c("Proportion_50_155bp", "Proportion_90_155bp","Proportion_below_155bp","Proportion_50_145bp", "Proportion_90_145bp","Proportion_below_145bp","Proportion_50_140bp", "Proportion_90_140bp","Proportion_below_140bp","Proportion_50_150bp", "Proportion_90_150bp","Proportion_below_150bp","Proportion_160_179bp","Proportion_180_220bp","Proportion_250_320bp"))
+
+
+for(i in Fragment_name_indices) {     # Printing ggplot within for-loop
+  print(ggplot(Fragment_data2, aes(x = Tumour_origin, y = Fragment_data2[, i])) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 18),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          legend.position = "right")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab(colnames(Fragment_data2)[i]))+
+        ggtitle("sWGS")
+  ggsave(filename=str_c(colnames(Fragment_data2)[i], "_updated2_boxplot_sWGS.png"), width = 20, height = 10, dpi=700)
+  #Sys.sleep(2)
+}
+```
+
+Boxplots extended (with p-values)
+```{r}
+#combine plots into one using ggarrange() 
+
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+
+Fragment_data2$Estimated_tumour_percent_bin <- factor(Fragment_data2$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+#stat test
+
+#sWGS comparisons
+my_comparisons<- list(c("Normal hCG", "Gestational (molar)"), c("Normal hCG", "Gestational (non-molar)"), c("Normal hCG", "Non-gestational"), c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+#sWGS comparisons without normal hCG group
+my_comparisons<- list(c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+#TMB comparisons
+my_comparisons<- list(c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+#SNP comparisons
+my_comparisons<- list(c("Normal hCG", "Gestational (molar)"), c("Normal hCG", "Gestational (non-molar)"), c("Normal hCG", "Non-gestational"), c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+
+b155<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_below_155bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(<155bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b155
+
+b50_155<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_50_155bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(50-155bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b50_155
+
+b90_155<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_90_155bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(90-155bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b90_155
+
+b145<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_below_145bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(<145bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b145
+
+b50_145<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_50_145bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(50-145bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b50_145
+
+b90_145<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_90_145bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(90-145bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b90_145
+
+b140<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_below_140bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(<140bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b140
+
+b50_140<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_50_140bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(50_140bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b50_140
+
+b90_140<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_90_140bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(90-140bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b90_140
+
+b1<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_below_150bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(<150bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b1
+
+b50_150<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_50_150bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(50_150bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b50_150
+
+b90_150<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_90_150bp)) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 16),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x=element_text(angle=65, hjust=1),
+          legend.position = "top")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab("P(90-150bp)")+
+        #ggtitle("SNP")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+        stat_compare_means(label.y = 0)
+
+b90_150
+
+#combine the plots
+boxplot_figure_extended <- ggarrange(b155, b50_155, b90_155, b145, b50_145, b90_145, b140, b50_140, b90_140, b1, b50_150, b90_150, ncol = 3, nrow = 4)
+
+boxplot_figure_extended
+
+#save boxplot
+#ggsave("sWGS_boxplot_extended_pvalues_2.png", width = 25, height = 35, dpi=700, limitsize = FALSE)
+```
+
+Get summary stats based on boxplots (extended)
+```{r}
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+```
+
+```{r}
+#Summary stats
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_below_155bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "below_155_Fragment_data2_summary_stats_boxplot1.csv", row.names=FALSE, quote=FALSE)
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_50_155bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "50_155_Fragment_data2_summary_stats_boxplot2.csv", row.names=FALSE, quote=FALSE)
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_90_155bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "90_155_Fragment_data2_summary_stats_boxplot3.csv", row.names=FALSE, quote=FALSE)
+
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_below_150bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "below_150_Fragment_data2_summary_stats_boxplot4.csv", row.names=FALSE, quote=FALSE)
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_50_150bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "50_150_Fragment_data2_summary_stats_boxplot5.csv", row.names=FALSE, quote=FALSE)
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_90_150bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "90_150_Fragment_data2_summary_stats_boxplot6.csv", row.names=FALSE, quote=FALSE)
+
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_below_145bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "below_145_Fragment_data2_summary_stats_boxplot7.csv", row.names=FALSE, quote=FALSE)
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_50_145bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "50_145_Fragment_data2_summary_stats_boxplot8.csv", row.names=FALSE, quote=FALSE)
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_90_145bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "90_145_Fragment_data2_summary_stats_boxplot9.csv", row.names=FALSE, quote=FALSE)
+
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_below_140bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "below_140_Fragment_data2_summary_stats_boxplot10.csv", row.names=FALSE, quote=FALSE)
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_50_140bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "50_140_Fragment_data2_summary_stats_boxplot11.csv", row.names=FALSE, quote=FALSE)
+
+Fragment_data2_summary_stats <- Fragment_data2 %>%
+  group_by(Tumour_origin) %>%
+  get_summary_stats(Proportion_90_140bp, type = c("full", "common", "robust", "five_number", "mean_sd", "mean_se", "mean_ci",
+    "median_iqr", "median_mad", "quantile", "mean", "median", "min", "max"))
+write.csv(Fragment_data2_summary_stats, "90_140_Fragment_data2_summary_stats_boxplot12.csv", row.names=FALSE, quote=FALSE)
+
+```
+
+Boxplots (fragment ranges)
+```{r}
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+
+Fragment_data2$Estimated_tumour_percent_bin <- factor(Fragment_data2$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+#stat test
+
+#sWGS comparisons
+my_comparisons<- list(c("Normal hCG", "Gestational (molar)"), c("Normal hCG", "Gestational (non-molar)"), c("Normal hCG", "Non-gestational"), c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+#sWGS comparisons without normal hCG group
+my_comparisons<- list(c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+#TMB comparisons
+my_comparisons<- list(c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+#SNP comparisons
+my_comparisons<- list(c("Normal hCG", "Gestational (molar)"), c("Normal hCG", "Gestational (non-molar)"), c("Normal hCG", "Non-gestational"), c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+update_geom_defaults("text", list(size = 15))
+
+b1<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_below_150bp), size = 30) +
+        geom_boxplot(alpha = 0.8) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 6, shape = 21)+
+        labs(fill = "Estimated ctDNA (%)")+
+        theme(text = element_text(size = 35),
+          axis.text.x = element_text(size=30, angle=65, hjust=1),
+          axis.text.y = element_text(size=30),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "top",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+        ylim(0, 70)+
+        xlab("Tumour type")+
+        ylab("P(<150bp)")+
+        #ggtitle("sWGS")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif", size = 15)+
+        #stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")+
+        stat_compare_means(label.y = 65)
+
+b1
+
+b2<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_160_179bp), size = 30) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 6, shape = 21)+
+        labs(fill = "Estimated ctDNA (%)")+
+        theme(text = element_text(size = 35),
+          axis.text.x = element_text(size=30, angle=65, hjust=1),
+          axis.text.y = element_text(size=30),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "top",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+        ylim(0, 70)+
+        xlab("Tumour type")+
+        ylab("P(160-179bp)")+
+        #ggtitle("TMB")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif", size = 15)+
+        #stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")+
+        stat_compare_means(label.y = 10)
+b2
+
+b3<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_180_220bp), size = 30) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 6, shape = 21)+
+        labs(fill = "Estimated ctDNA (%)")+
+        theme(text = element_text(size = 35),
+          axis.text.x = element_text(size=30, angle=65, hjust=1),
+          axis.text.y = element_text(size=30),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "top",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+        ylim(0, 70)+
+        xlab("Tumour type")+
+        ylab("P(180-220bp)")+
+        #ggtitle("TMB")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif", size = 15)+
+        #stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")+
+        stat_compare_means(label.y = 65)
+b3
+
+b4<-ggplot(Fragment_data2, aes(x=Tumour_origin, y=Proportion_250_320bp), size = 30) +
+        geom_boxplot(alpha = 0.80) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 6, shape = 21)+
+        labs(fill = "Estimated ctDNA (%)")+
+        theme(text = element_text(size = 35),
+          axis.text.x = element_text(size=30, angle=65, hjust=1),
+          axis.text.y = element_text(size=30),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "top",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+        ylim(0, 70)+
+        xlab("Tumour type")+
+        ylab("P(250-320bp)")+
+        #ggtitle("TMB")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif", size = 15)+
+        #stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")+
+        stat_compare_means(label.y = 65)
+b4
+
+#combine the boxplots
+boxplot_figure <- ggarrange(b1, b2, b3, b4, ncol = 4, nrow = 1)
+
+boxplot_figure
+
+#save boxplot
+ggsave("SNP_boxplot_4_v1_1.png", width = 40, height = 18, device = "tiff", dpi=700)
+
+ggsave("SNP_boxplot_4_v2_2.png", width = 40, height = 18, dpi=700)
+
+```
+
+For loop boxplot with Kruskal-Wallis test
+```{r}
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+
+Fragment_name_indices <- which(names(Fragment_data2)%in%c("Proportion_below_150bp","Proportion_160_179bp","Proportion_180_220bp","Proportion_250_320bp"))
+
+#sWGS comparisons
+my_comparisons<- list(c("Normal hCG", "Gestational (molar)"), c("Normal hCG", "Gestational (non-molar)"), c("Normal hCG", "Non-gestational"), c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+#TMB comparisons
+my_comparisons<- list(c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+#SNP comparisons
+my_comparisons<- list(c("Normal hCG", "Gestational (molar)"), c("Normal hCG", "Gestational (non-molar)"), c("Normal hCG", "Non-gestational"), c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+
+for(i in Fragment_name_indices) {     # Printing ggplot within for-loop
+  print(ggplot(Fragment_data2, aes(x = Tumour_origin, y = Fragment_data2[, i])) +
+        geom_boxplot(aes(x=Tumour_origin, y=Fragment_data2[, i])) +
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+        theme(text = element_text(size = 18),
+          #axis.title.x = element_blank(),
+          #axis.title.y = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          legend.position = "right")+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        ylab(colnames(Fragment_data2)[i])+
+        #ggtitle("SNP")+
+        scale_color_viridis_d()+
+        #theme_classic()+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+        stat_compare_means(label.y = 0))
+  ggsave(filename=str_c(colnames(Fragment_data2)[i], "_boxplot_SNP_KW_updated4.png"), width = 20, height = 10, dpi=700)
+  #Sys.sleep(2)
+}
+
+```
+
+For loop correlation plot (Proportion vs Estimated tumour fraction)
+-  Correlation plots for all fragment ranges - sWGS, TMB, and SNP
+```{r}
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+Fragment_data2$Estimated_tumour_fraction <- as.numeric(Fragment_data2$Estimated_tumour_fraction)
+
+Fragment_name_indices <- which(names(Fragment_data2)%in%c("Proportion_50_150bp", "Proportion_90_150bp","Proportion_below_150bp","Proportion_160_179bp","Proportion_180_220bp","Proportion_250_320bp"))
+
+
+for(i in Fragment_name_indices) {     # Printing ggplot within for-loop
+  print(ggplot(Fragment_data2, aes(x=Estimated_tumour_fraction, y=Fragment_data2[, i], color=Tumour_origin))+
+        geom_point()+
+        ylim(0, NA)+
+        xlab("Estimated tumour fraction")+
+        ylab(colnames(Fragment_data2)[i])+
+        ggtitle("SNP"))
+  ggsave(filename=str_c(colnames(Fragment_data2)[i], "_correlation_Est.Tum.Fra_SNP_updated4.png"), width = 20, height = 10, dpi=700)
+  Sys.sleep(2)
+}
+
+```
+
+For loop correlation plot (Proportion vs Serum hCG)
+-  Correlation plots for all fragment ranges - sWGS, TMB, and SNP
+```{r}
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+Fragment_data2$serum_hCG <- as.numeric(Fragment_data2$serum_hCG)
+
+Fragment_name_indices <- which(names(Fragment_data2)%in%c("Proportion_50_150bp", "Proportion_90_150bp","Proportion_below_150bp","Proportion_160_179bp","Proportion_180_220bp","Proportion_250_320bp"))
+
+
+for(i in Fragment_name_indices) {     # Printing ggplot within for-loop
+  print(ggplot(Fragment_data2, aes(x=serum_hCG, y=Fragment_data2[, i], color=Tumour_origin))+
+        geom_point()+
+        scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+        ylim(0, NA)+
+        xlab("Serum hCG")+
+        ylab(colnames(Fragment_data2)[i])+
+        ggtitle("SNP"))
+  ggsave(filename=str_c(colnames(Fragment_data2)[i], "_correlation_hCG_SNP_updated4.png"), width = 20, height = 10, dpi=700)
+  Sys.sleep(2)
+}
+
+```
+
+Correlation plots with Spearman's Rank correlation (extended)
+- Estimated tumour content
+```{r}
+#scatter plots with correlation coefficient
+
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+Fragment_data2$Estimated_tumour_fraction <- as.numeric(Fragment_data2$Estimated_tumour_fraction)
+
+Fragment_data2<-filter(Fragment_data2, Tumour_origin!="Normal hCG") # do not run for SNP data
+
+
+sp_corr_155 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_below_155bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(<155bp)")
+  #ggtitle("SNP")
+
+sp_corr_155
+
+# Add correlation coefficient
+Sp_155 <- sp_corr_155 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr_50_155 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_50_155bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(50-155bp)")
+  #ggtitle("SNP")
+
+sp_corr_50_155
+
+# Add correlation coefficient
+Sp_50_155 <- sp_corr_50_155 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr_90_155 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_90_155bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(90-155bp)")
+  #ggtitle("SNP")
+
+sp_corr_90_155
+
+# Add correlation coefficient
+Sp_90_155 <- sp_corr_90_155 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr_145 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_below_145bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(<145bp)")
+  #ggtitle("SNP")
+
+sp_corr_145
+
+# Add correlation coefficient
+Sp_145 <- sp_corr_145 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr_50_145 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_50_145bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(50-145bp)")
+  #ggtitle("SNP")
+
+sp_corr_50_145
+
+# Add correlation coefficient
+Sp_50_145 <- sp_corr_50_145 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr_90_145 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_90_145bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(90-145bp)")
+  #ggtitle("SNP")
+
+sp_corr_90_145
+
+# Add correlation coefficient
+Sp_90_145 <- sp_corr_90_145 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr_140 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_below_140bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(<140bp)")
+  #ggtitle("SNP")
+
+sp_corr_140
+
+# Add correlation coefficient
+Sp_140 <- sp_corr_140 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr_50_140 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_50_140bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(50-140bp)")
+  #ggtitle("SNP")
+
+sp_corr_50_140
+
+# Add correlation coefficient
+Sp_50_140 <- sp_corr_50_140 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr_90_140 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_90_140bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(90-140bp)")
+  #ggtitle("SNP")
+
+sp_corr_90_140
+
+# Add correlation coefficient
+Sp_90_140 <- sp_corr_90_140 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+
+sp_corr1 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_below_150bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(<150bp)")
+  #ggtitle("SNP")
+
+sp_corr1
+
+# Add correlation coefficient
+Sp1 <- sp_corr1 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr_50_150 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_50_150bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fractionG")+
+  ylab("P(50-150bp)")
+  #ggtitle("SNP")
+
+sp_corr_50_150
+
+# Add correlation coefficient
+Sp_50_150 <- sp_corr_50_150 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr_90_150 <- ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_90_150bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(90-150bp)")
+  #ggtitle("SNP")
+
+sp_corr_90_150
+
+# Add correlation coefficient
+Sp_90_150 <- sp_corr_90_150 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+#combine plots into one (with statistical test)
+ETC_correlation_figure2 <- ggarrange(Sp_155, Sp_50_155, Sp_90_155, Sp_145, Sp_50_145, Sp_90_145, Sp_140, Sp_50_140, Sp_90_140, Sp1, Sp_50_150, Sp_90_150, ncol = 3, nrow = 4)
+
+#combine plots into one (without statistical test)
+ETC_correlation_figure2 <- ggarrange(sp_corr_155, sp_corr_50_155, sp_corr_90_155, sp_corr_145, sp_corr_50_145, sp_corr_90_145, sp_corr_140, sp_corr_50_140, sp_corr_90_140, sp_corr1, sp_corr_50_150, sp_corr_90_150, ncol = 3, nrow = 4)
+
+ETC_correlation_figure2
+
+#save plot
+#ggsave("SNP_ETC_correlation_extended_3.png", width = 35, height = 30, dpi=700, limitsize = FALSE)
+
+```
+
+Correlation plots (fragment ranges) 
+- Estimated tumour content
+```{r}
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+Fragment_data2$Estimated_tumour_fraction <- as.numeric(Fragment_data2$Estimated_tumour_fraction)
+
+#exclude normal control samples from data
+#Fragment_data2<-filter(Fragment_data2, Tumour_origin!="Normal hCG")
+
+sp_corr1<-ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_below_150bp",
+   add = "reg.line",  # Add regression line
+   #conf.int = TRUE, # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        #axis.text.x=element_text(angle=65, hjust=1),
+       # panel.grid.minor.x = element_blank(),
+       # panel.grid.major.x = element_blank(),
+        #legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated Tumour fraction")+
+  ylab("P(<150bp)")
+  #ggtitle("TMB")
+
+sp_corr1
+
+# Add correlation coefficient
+Sp1 <- sp_corr1 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr2<-ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_160_179bp",
+   add = "reg.line",  # Add regression line
+   #conf.int = TRUE, # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        #axis.text.x=element_text(angle=65, hjust=1),
+       # panel.grid.minor.x = element_blank(),
+       # panel.grid.major.x = element_blank(),
+        #legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(160-179bp)")
+  #ggtitle("TMB")
+
+sp_corr2
+
+# Add correlation coefficient
+Sp2 <- sp_corr2 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr3<-ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_180_220bp",
+   add = "reg.line",  # Add regression line
+   #conf.int = TRUE, # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        #axis.text.x=element_text(angle=65, hjust=1),
+       # panel.grid.minor.x = element_blank(),
+       # panel.grid.major.x = element_blank(),
+        #legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(180-220bp)")
+  #ggtitle("TMB")
+
+sp_corr3
+
+# Add correlation coefficient
+Sp3 <- sp_corr3 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+sp_corr4<-ggscatter(Fragment_data2, x = "Estimated_tumour_fraction", y = "Proportion_250_320bp",
+   add = "reg.line",  # Add regression line
+   #conf.int = TRUE, # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        #axis.text.x=element_text(angle=65, hjust=1),
+       # panel.grid.minor.x = element_blank(),
+       # panel.grid.major.x = element_blank(),
+        #legend.position = "right")+
+  ylim(0, 60)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(250-320bp)")
+  #ggtitle("TMB")
+
+sp_corr4
+
+# Add correlation coefficient
+Sp4 <- sp_corr4 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+#combine all plots into one (with statistical test)
+ETC_correlation_figure <- ggarrange(Sp1, Sp2, Sp3, Sp4, ncol = 4, nrow = 1)
+
+#combine all plots into one (without statistical test)
+ETC_correlation_figure <- ggarrange(sp_corr1, sp_corr2, sp_corr3, sp_corr4, ncol = 4, nrow = 1)
+
+ETC_correlation_figure
+
+#save plot
+#ggsave("SNP_ETC_correlation_colourby_TumourOrigin_2.png", width = 49, height = 15, dpi=700)
+
+```
+
+Correlation plots with Spearman's rank correlation (extended)
+- serum hCG
+```{r}
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+Fragment_data2$serum_hCG <- as.numeric(Fragment_data2$serum_hCG)
+
+#exclude normal and non-gestational samples
+#Fragment_data2<-filter(Fragment_data2, Tumour_origin!="Normal hCG" & Tumour_origin!="Non-gestational")
+
+#exclude normal samples
+#Fragment_data2<-filter(Fragment_data2, Tumour_origin!="Normal hCG")
+
+sp_corr_155 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_below_155bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(<155bp)")
+  #ggtitle("SNP")
+
+sp_corr_155
+
+# Add correlation coefficient
+Sp_155 <- sp_corr_155 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr_50_155 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_50_155bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(50-155bp)")
+  #ggtitle("SNP")
+
+sp_corr_50_155
+
+# Add correlation coefficient
+Sp_50_155 <- sp_corr_50_155 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr_90_155 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_90_155bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(90-155bp)")
+  #ggtitle("SNP")
+
+sp_corr_90_155
+
+# Add correlation coefficient
+Sp_90_155 <- sp_corr_90_155 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr_145 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_below_145bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(<145bp)")
+  #ggtitle("SNP")
+
+sp_corr_145
+
+# Add correlation coefficient
+Sp_145 <- sp_corr_145 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr_50_145 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_50_145bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(50-145bp)")
+  #ggtitle("SNP")
+
+sp_corr_50_145
+
+# Add correlation coefficient
+Sp_50_145 <- sp_corr_50_145 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr_90_145 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_90_145bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(90-145bp)")
+  #ggtitle("SNP")
+
+sp_corr_90_145
+
+# Add correlation coefficient
+Sp_90_145 <- sp_corr_90_145 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr_140 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_below_140bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(<140bp)")
+  #ggtitle("SNP")
+
+sp_corr_140
+
+# Add correlation coefficient
+Sp_140 <- sp_corr_140 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr_50_140 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_50_140bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(50-140bp)")
+  #ggtitle("SNP")
+
+sp_corr_50_140
+
+# Add correlation coefficient
+Sp_50_140 <- sp_corr_50_140 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr_90_140 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_90_140bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(90-140bp)")
+  #ggtitle("SNP")
+
+sp_corr_90_140
+
+# Add correlation coefficient
+Sp_90_140 <- sp_corr_90_140 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr1 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_below_150bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(<150bp)")
+  #ggtitle("SNP")
+
+sp_corr1
+
+# Add correlation coefficient
+Sp1 <- sp_corr1 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr_50_150 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_50_150bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(50-150bp)")
+  #ggtitle("SNP")
+
+sp_corr_50_150
+
+# Add correlation coefficient
+Sp_50_150 <- sp_corr_50_150 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr_90_150 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_90_150bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(90-150bp)")
+  #ggtitle("SNP")
+
+sp_corr_90_150
+
+# Add correlation coefficient
+Sp_90_150 <- sp_corr_90_150 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+#combine all plots into one (with statistical test)
+hCG_correlation_figure2 <- ggarrange(Sp_155, Sp_50_155, Sp_90_155, Sp_145, Sp_50_145, Sp_90_145, Sp_140, Sp_50_140, Sp_90_140, Sp1, Sp_50_150, Sp_90_150, ncol = 3, nrow = 4)
+
+#combine all plots into one (without statistical test)
+hCG_correlation_figure2 <- ggarrange(sp_corr_155, sp_corr_50_155, sp_corr_90_155, sp_corr_145, sp_corr_50_145, sp_corr_90_145, sp_corr_140, sp_corr_50_140, sp_corr_90_140, sp_corr1, sp_corr_50_150, sp_corr_90_150, ncol = 3, nrow = 4)
+
+hCG_correlation_figure2
+
+#save plot
+#ggsave("SNP_hcG_correlation_extended_3.png", width = 35, height = 30, dpi=700, limitsize = FALSE)
+```
+
+Correlation plots (fragment ranges) 
+- serum hCG
+```{r}
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+Fragment_data2$serum_hCG <- as.numeric(Fragment_data2$serum_hCG)
+
+Fragment_data2$Estimated_tumour_percent_bin <- factor(Fragment_data2$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+Fragment_data2<-filter(Fragment_data2, Tumour_origin!="Normal hCG" & Tumour_origin!="Non-gestational")
+Fragment_data2<-filter(Fragment_data2, Tumour_origin!="Normal hCG")
+
+sp_corr1 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_below_150bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Estimated_tumour_percent_bin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Estimated_tumour_percent_bin), size = 10, shape = 21)+
+  theme(text = element_text(size = 35))+
+        #axis.title.x = element_text(size=30),
+        #axis.title.y = element_text(size=30))+
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(<150bp)")
+  #ggtitle("TMB")
+
+sp_corr1
+
+# Add correlation coefficient
+Sp1 <- sp_corr1 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+#show statistical test based on tumour origin
+Sp1 <- sp_corr1 + stat_cor(aes(color = Tumour_origin), method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr2 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_160_179bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Estimated_tumour_percent_bin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Estimated_tumour_percent_bin), size = 10, shape = 21)+
+  theme(text = element_text(size = 35))+
+        #axis.title.x = element_text(size=30),
+        #axis.title.y = element_text(size=30))+
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(160-179bp)")
+  #ggtitle("TMB")
+
+sp_corr2
+
+# Add correlation coefficient
+Sp2 <- sp_corr2 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+#show statistical test based on tumour origin
+Sp2 <- sp_corr2 + stat_cor(aes(color = Tumour_origin), method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr3 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_180_220bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Estimated_tumour_percent_bin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Estimated_tumour_percent_bin), size = 10, shape = 21)+
+  theme(text = element_text(size = 35))+
+        #axis.title.x = element_text(size=30),
+        #axis.title.y = element_text(size=30))+
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(180-220bp)")
+  #ggtitle("TMB")
+
+sp_corr3
+
+# Add correlation coefficient
+Sp3 <- sp_corr3 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+#show statistical test based on tumour origin
+Sp3 <- sp_corr3 + stat_cor(aes(color = Tumour_origin), method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sp_corr4 <- ggscatter(Fragment_data2, x = "serum_hCG", y = "Proportion_250_320bp",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Estimated_tumour_percent_bin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  geom_point(aes(fill = Estimated_tumour_percent_bin), size = 10, shape = 21)+
+  theme(text = element_text(size = 35))+
+        #axis.title.x = element_text(size=30),
+        #axis.title.y = element_text(size=30))+
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # panel.grid.minor.x = element_blank(),
+      # panel.grid.major.x = element_blank(),
+      # legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(250-320bp)")
+  #ggtitle("TMB")
+
+sp_corr4
+
+# Add correlation coefficient
+Sp4 <- sp_corr4 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+#show statistical test based on tumour origin
+Sp4 <- sp_corr4 + stat_cor(aes(color = Tumour_origin), method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+#combine all plots into one (with statistical test)
+hCG_correlation_figure <- ggarrange(Sp1, Sp2, Sp3, Sp4, ncol = 4, nrow = 1)
+
+#combine all plots into one (without statistical test)
+hCG_correlation_figure <- ggarrange(sp_corr1, sp_corr2, sp_corr3, sp_corr4, ncol = 4, nrow = 1)
+
+hCG_correlation_figure
+
+#save plot
+#ggsave("sWGS_hcG_correlation_EstimatedTumourContent.png", width = 49, height = 15, dpi=700)
+
+```
+
+Another way of correlation 
+- serum hCG
+```{r}
+Fragment_data <- filtered_sWGS_all_s2_cfDNA
+Fragment_data <- filtered_sWGS_all_s2_TMB
+Fragment_data <- filtered_sWGS_all_s2_SNP
+
+Fragment_data2 <- Fragment_data
+Fragment_data2 <- as.data.frame(Fragment_data2)
+Fragment_data2$serum_hCG <- as.numeric(Fragment_data2$serum_hCG)
+
+Fragment_data2$Estimated_tumour_percent_bin <- factor(Fragment_data2$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+Fragment_data2<-filter(Fragment_data2, Tumour_origin!="Normal hCG" & Tumour_origin!="Non-gestational")
+Fragment_data2<-filter(Fragment_data2, Tumour_origin!="Normal hCG")
+
+group1 <- filter(Fragment_data2, Tumour_origin == "Normal hCG")
+group2 <- filter(Fragment_data2, Tumour_origin == "Non-gestational")
+group3 <- filter(Fragment_data2, Tumour_origin == "Gestational (molar)")
+group4 <- filter(Fragment_data2, Tumour_origin == "Gestational (non-molar)")
+
+#use for sWGS
+group5 <- filter(Fragment_data2, Tumour_origin == "Gestational (non-molar)" | Tumour_origin == "Gestational (molar)")
+```
+
+SNP correlation - serum hCG 
+- all points on one plot
+```{r}
+new_sc1 <- ggplot()+
+  geom_smooth(aes(x = serum_hCG, y = Proportion_below_150bp), data = group3, 
+              method = "lm", se = FALSE, color = "red", fullrange = TRUE) + 
+  geom_smooth(aes(x = serum_hCG, y = Proportion_below_150bp), data = group4, 
+              method = "lm", se = FALSE, color = "dark green", fullrange = TRUE) + 
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150bp, fill = Tumour_origin), size = 10, shape = 21, data = group1)+
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150bp, fill = Tumour_origin), size = 10, shape = 21, data = group2)+
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150bp, fill = Tumour_origin), size = 10, shape = 21, data = group3)+
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150bp, fill = Tumour_origin), size = 10, shape = 21, data = group4)+
+  labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "none",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(<150 bp)")
+new_sc1
+
+new_sc2 <- ggplot()+
+  geom_smooth(aes(x = serum_hCG, y = Proportion_160_179bp), data = group3, 
+              method = "lm", se = FALSE, color = "red", fullrange = TRUE) + 
+  geom_smooth(aes(x = serum_hCG, y = Proportion_160_179bp), data = group4, 
+              method = "lm", se = FALSE, color = "dark green", fullrange = TRUE) + 
+  geom_point(aes(x = serum_hCG, y = Proportion_160_179bp, fill = Tumour_origin), size = 10, shape = 21, data = group1)+
+  geom_point(aes(x = serum_hCG, y = Proportion_160_179bp, fill = Tumour_origin), size = 10, shape = 21, data = group2)+
+  geom_point(aes(x = serum_hCG, y = Proportion_160_179bp, fill = Tumour_origin), size = 10, shape = 21, data = group3)+
+  geom_point(aes(x = serum_hCG, y = Proportion_160_179bp, fill = Tumour_origin), size = 10, shape = 21, data = group4)+
+  labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "none",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(160-179 bp)")
+new_sc2
+
+new_sc3 <- ggplot()+
+  geom_smooth(aes(x = serum_hCG, y = Proportion_180_220bp), data = group3, 
+              method = "lm", se = FALSE, color = "red", fullrange = TRUE) + 
+  geom_smooth(aes(x = serum_hCG, y = Proportion_180_220bp), data = group4, 
+              method = "lm", se = FALSE, color = "dark green", fullrange = TRUE) + 
+  geom_point(aes(x = serum_hCG, y = Proportion_180_220bp, fill = Tumour_origin), size = 10, shape = 21, data = group1)+
+  geom_point(aes(x = serum_hCG, y = Proportion_180_220bp, fill = Tumour_origin), size = 10, shape = 21, data = group2)+
+  geom_point(aes(x = serum_hCG, y = Proportion_180_220bp, fill = Tumour_origin), size = 10, shape = 21, data = group3)+
+  geom_point(aes(x = serum_hCG, y = Proportion_180_220bp, fill = Tumour_origin), size = 10, shape = 21, data = group4)+
+  labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "none",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(180-220 bp)")
+new_sc3
+
+new_sc4 <- ggplot()+
+  geom_smooth(aes(x = serum_hCG, y = Proportion_250_320bp), data = group3, 
+              method = "lm", se = FALSE, color = "red", fullrange = TRUE) + 
+  geom_smooth(aes(x = serum_hCG, y = Proportion_250_320bp), data = group4, 
+              method = "lm", se = FALSE, color = "dark green", fullrange = TRUE) + 
+  geom_point(aes(x = serum_hCG, y = Proportion_250_320bp, fill = Tumour_origin), size = 10, shape = 21, data = group1)+
+  geom_point(aes(x = serum_hCG, y = Proportion_250_320bp, fill = Tumour_origin), size = 10, shape = 21, data = group2)+
+  geom_point(aes(x = serum_hCG, y = Proportion_250_320bp, fill = Tumour_origin), size = 10, shape = 21, data = group3)+
+  geom_point(aes(x = serum_hCG, y = Proportion_250_320bp, fill = Tumour_origin), size = 10, shape = 21, data = group4)+
+  labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "none",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(250-320 bp)")
+new_sc4
+
+#combine plots into one
+hCG_correlation_figure2 <- ggarrange(new_sc1, new_sc2, new_sc3, new_sc4, ncol = 4, nrow = 1)
+
+hCG_correlation_figure2
+
+#save plot
+ggsave("SNP_hcG_correlation_TumourOrigin_updated_v1_1.png", width = 49, height = 15, dpi=700)
+
+ggsave("SNP_hcG_correlation_TumourOrigin_updated_v2_1.png", width = 49, height = 15, device = "tiff", dpi=700)
+
+
+```
+
+sWGS correlation - serum hCG 
+- all points on one plot
+```{r}
+new_sc1 <- ggplot()+
+  geom_smooth(aes(x = serum_hCG, y = Proportion_below_150bp), data = group5, 
+              method = "lm", se = FALSE, color = "red", fullrange = TRUE) + 
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150bp, fill = Tumour_origin), size = 10, shape = 21, data = group1)+
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150bp, fill = Tumour_origin), size = 10, shape = 21, data = group2)+
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150bp, fill = Tumour_origin), size = 10, shape = 21, data = group3)+
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150bp, fill = Tumour_origin), size = 10, shape = 21, data = group4)+
+      labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "none",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(<150 bp)")
+new_sc1
+
+new_sc2 <- ggplot()+
+  geom_smooth(aes(x = serum_hCG, y = Proportion_160_179bp), data = group5, 
+              method = "lm", se = FALSE, color = "red", fullrange = TRUE) + 
+  geom_point(aes(x = serum_hCG, y = Proportion_160_179bp, fill = Tumour_origin), size = 10, shape = 21, data = group1)+
+  geom_point(aes(x = serum_hCG, y = Proportion_160_179bp, fill = Tumour_origin), size = 10, shape = 21, data = group2)+
+  geom_point(aes(x = serum_hCG, y = Proportion_160_179bp, fill = Tumour_origin), size = 10, shape = 21, data = group3)+
+  geom_point(aes(x = serum_hCG, y = Proportion_160_179bp, fill = Tumour_origin), size = 10, shape = 21, data = group4)+
+  labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "none",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(160-179 bp)")
+new_sc2
+
+new_sc3 <- ggplot()+
+  geom_smooth(aes(x = serum_hCG, y = Proportion_180_220bp), data = group5, 
+              method = "lm", se = FALSE, color = "red", fullrange = TRUE) + 
+  geom_point(aes(x = serum_hCG, y = Proportion_180_220bp, fill = Tumour_origin), size = 10, shape = 21, data = group1)+
+  geom_point(aes(x = serum_hCG, y = Proportion_180_220bp, fill = Tumour_origin), size = 10, shape = 21, data = group2)+
+  geom_point(aes(x = serum_hCG, y = Proportion_180_220bp, fill = Tumour_origin), size = 10, shape = 21, data = group3)+
+  geom_point(aes(x = serum_hCG, y = Proportion_180_220bp, fill = Tumour_origin), size = 10, shape = 21, data = group4)+
+  labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "none",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(180-220 bp)")
+new_sc3
+
+new_sc4 <- ggplot()+
+  geom_smooth(aes(x = serum_hCG, y = Proportion_250_320bp), data = group5, 
+              method = "lm", se = FALSE, color = "red", fullrange = TRUE) + 
+  geom_point(aes(x = serum_hCG, y = Proportion_250_320bp, fill = Tumour_origin), size = 10, shape = 21, data = group1)+
+  geom_point(aes(x = serum_hCG, y = Proportion_250_320bp, fill = Tumour_origin), size = 10, shape = 21, data = group2)+
+  geom_point(aes(x = serum_hCG, y = Proportion_250_320bp, fill = Tumour_origin), size = 10, shape = 21, data = group3)+
+  geom_point(aes(x = serum_hCG, y = Proportion_250_320bp, fill = Tumour_origin), size = 10, shape = 21, data = group4)+
+  labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "right",
+          legend.text = element_text(size = 30),
+          legend.title = element_text(size = 30))+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 60)+
+  xlab("Serum hCG")+
+  ylab("P(250-320 bp)")
+new_sc4
+
+#combine plots into one
+hCG_correlation_figure2 <- ggarrange(new_sc1, new_sc2, new_sc3, new_sc4, ncol = 4, nrow = 1)
+
+hCG_correlation_figure2
+
+#save plot
+ggsave("sWGS_hcG_correlation_TumourOrigin_v1_1.png", width = 49, height = 15, dpi=700)
+
+ggsave("sWGS_hcG_correlation_TumourOrigin_v2_2.png", width = 49, height = 15, device = "tiff", dpi=700)
+
+
+```
+
+Data for plots for different fragment combinations 
+```{r}
+
+#Data for boxplots and correlation plots
+Fragment_combinations_boxplot <- filtered_sWGS_all_s2_cfDNA
+Fragment_combinations_boxplot <- filtered_sWGS_all_s2_TMB           
+Fragment_combinations_boxplot <- filtered_sWGS_all_s2_SNP
+
+#division by
+
+#<150
+Fragment_combinations_boxplot["Proportion_below_150_dividedby_160_179"]<-(Fragment_combinations_boxplot["Proportion_below_150bp"]/Fragment_combinations_boxplot["Proportion_160_179bp"])
+
+Fragment_combinations_boxplot["Proportion_below_150_dividedby_180_220"]<-(Fragment_combinations_boxplot["Proportion_below_150bp"]/Fragment_combinations_boxplot["Proportion_180_220bp"])
+
+Fragment_combinations_boxplot["Proportion_below_150_dividedby_250_320"]<-(Fragment_combinations_boxplot["Proportion_below_150bp"]/Fragment_combinations_boxplot["Proportion_250_320bp"])
+
+
+#160-179
+Fragment_combinations_boxplot["Proportion_160_179_dividedby_below_150"]<-(Fragment_combinations_boxplot["Proportion_160_179bp"]/Fragment_combinations_boxplot["Proportion_below_150bp"])
+
+Fragment_combinations_boxplot["Proportion_160_179_dividedby_180_220"]<-(Fragment_combinations_boxplot["Proportion_160_179bp"]/Fragment_combinations_boxplot["Proportion_180_220bp"])
+
+Fragment_combinations_boxplot["Proportion_160_179_dividedby_250_320"]<-(Fragment_combinations_boxplot["Proportion_160_179bp"]/Fragment_combinations_boxplot["Proportion_250_320bp"])
+
+
+#180-220
+Fragment_combinations_boxplot["Proportion_180_220_dividedby_below_150"]<-(Fragment_combinations_boxplot["Proportion_180_220bp"]/Fragment_combinations_boxplot["Proportion_below_150bp"])
+
+Fragment_combinations_boxplot["Proportion_180_220_dividedby_160_179"]<-(Fragment_combinations_boxplot["Proportion_180_220bp"]/Fragment_combinations_boxplot["Proportion_160_179bp"])
+
+Fragment_combinations_boxplot["Proportion_180_220_dividedby_250_320"]<-(Fragment_combinations_boxplot["Proportion_180_220bp"]/Fragment_combinations_boxplot["Proportion_250_320bp"])
+
+
+#250-320
+Fragment_combinations_boxplot["Proportion_250_320_dividedby_below_150"]<-(Fragment_combinations_boxplot["Proportion_250_320bp"]/Fragment_combinations_boxplot["Proportion_below_150bp"])
+
+Fragment_combinations_boxplot["Proportion_250_320_dividedby_160_179"]<-(Fragment_combinations_boxplot["Proportion_250_320bp"]/Fragment_combinations_boxplot["Proportion_160_179bp"])
+
+Fragment_combinations_boxplot["Proportion_250_320_dividedby_180_220"]<-(Fragment_combinations_boxplot["Proportion_250_320bp"]/Fragment_combinations_boxplot["Proportion_180_220bp"])
+
+
+#addition with
+
+#<150
+Fragment_combinations_boxplot["Proportion_below_150_plus_160_179"]<-(Fragment_combinations_boxplot["Proportion_below_150bp"]+Fragment_combinations_boxplot["Proportion_160_179bp"])
+
+Fragment_combinations_boxplot["Proportion_below_150_plus_180_220"]<-(Fragment_combinations_boxplot["Proportion_below_150bp"]+Fragment_combinations_boxplot["Proportion_180_220bp"])
+
+Fragment_combinations_boxplot["Proportion_below_150_plus_250_320"]<-(Fragment_combinations_boxplot["Proportion_below_150bp"]+Fragment_combinations_boxplot["Proportion_250_320bp"])
+
+
+#160-179
+Fragment_combinations_boxplot["Proportion_160_179_plus_180_220"]<-(Fragment_combinations_boxplot["Proportion_160_179bp"]+Fragment_combinations_boxplot["Proportion_180_220bp"])
+
+Fragment_combinations_boxplot["Proportion_160_179_plus_250_320"]<-(Fragment_combinations_boxplot["Proportion_160_179bp"]+Fragment_combinations_boxplot["Proportion_250_320bp"])
+
+
+#180-220
+Fragment_combinations_boxplot["Proportion_180_220_plus_250_320"]<-(Fragment_combinations_boxplot["Proportion_180_220bp"]+Fragment_combinations_boxplot["Proportion_250_320bp"])
+
+
+#optimisation of <150 bp - ratios
+
+#90-150/180-220
+Fragment_combinations_boxplot["Proportion_90_150_dividedby_180_220"]<-(Fragment_combinations_boxplot["Proportion_90_150bp"]/Fragment_combinations_boxplot["Proportion_180_220bp"])
+
+#90-155/180-220
+Fragment_combinations_boxplot["Proportion_90_155_dividedby_180_220"]<-(Fragment_combinations_boxplot["Proportion_90_155bp"]/Fragment_combinations_boxplot["Proportion_180_220bp"])
+
+```
+
+For loop
+- Boxplots for different fragment combinations - sWGS, TMB, and SNP
+```{r}
+Fragment_combinations_boxplot <- as.data.frame(Fragment_combinations_boxplot)
+Fragment_combinations_boxplot$Estimated_tumour_fraction<-as.numeric(Fragment_combinations_boxplot$Estimated_tumour_fraction)
+
+Fragment_combinations_boxplot$Estimated_tumour_percent_bin <- factor(Fragment_combinations_boxplot$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+#proportions to loop through
+#Fragment_name_indices <- which(names(Fragment_combinations_boxplot)%in%c("Proportion_below_150_dividedby_160_179", "Proportion_below_150_dividedby_180_220", "Proportion_below_150_dividedby_250_320", "Proportion_160_179_dividedby_below_150", "Proportion_160_179_dividedby_180_220", "Proportion_160_179_dividedby_250_320", "Proportion_180_220_dividedby_below_150", "Proportion_180_220_dividedby_160_179", "Proportion_180_220_dividedby_250_320", "Proportion_250_320_dividedby_below_150", "Proportion_250_320_dividedby_160_179", "Proportion_250_320_dividedby_180_220", "Proportion_below_150_plus_160_179", "Proportion_below_150_plus_180_220", "Proportion_below_150_plus_250_320", "Proportion_160_179_plus_180_220", "Proportion_160_179_plus_250_320", "Proportion_180_220_plus_250_320"))
+
+#another sequence of combination of proportions to loop through
+Fragment_name_indices <- which(names(Fragment_combinations_boxplot)%in%c("Proportion_below_150bp", "Proportion_below_150_dividedby_160_179", "Proportion_below_150_dividedby_180_220", "Proportion_below_150_dividedby_250_320", "Proportion_160_179_dividedby_below_150", "Proportion_180_220_dividedby_below_150", "Proportion_250_320_dividedby_below_150", "Proportion_below_150_plus_160_179", "Proportion_below_150_plus_180_220", "Proportion_below_150_plus_250_320"))
+
+#another sequence
+Fragment_name_indices <- which(names(Fragment_combinations_boxplot)%in%c("Proportion_below_150bp", "Proportion_below_150_dividedby_160_179", "Proportion_below_150_dividedby_180_220", "Proportion_below_150_dividedby_250_320", "Proportion_below_150_plus_160_179", "Proportion_below_150_plus_180_220", "Proportion_below_150_plus_250_320"))
+
+#another sequence
+Fragment_name_indices <- which(names(Fragment_combinations_boxplot)%in%c("Proportion_below_150_dividedby_180_220", "Proportion_90_150_dividedby_180_220", "Proportion_90_155_dividedby_180_220"))
+
+#SNP comparisons for statistical analysis
+my_comparisons<- list(c("Normal hCG", "Gestational (molar)"), c("Normal hCG", "Gestational (non-molar)"), c("Normal hCG", "Non-gestational"), c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+
+for(i in Fragment_name_indices) {     # Printing ggplot within for-loop
+  print(ggplot(Fragment_combinations_boxplot, aes(x = Tumour_origin, y = Fragment_combinations_boxplot[, i])) +
+        geom_boxplot(aes(x=Tumour_origin, y=Fragment_combinations_boxplot[, i]))+ 
+        geom_point(aes(fill = Estimated_tumour_percent_bin), size = 6, shape = 21)+
+        labs(fill = "Estimated ctDNA (%)")+
+        theme(text = element_text(size = 40),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x = element_text(size=35, angle=65, hjust=1),
+          axis.text.y = element_text(size=35),
+          legend.position = "right",
+          legend.text = element_text(size = 30),
+          legend.title = element_text(size = 30))+
+        ylim(0, NA)+
+        xlab("Tumour type")+
+        scale_color_viridis_d()+
+        #ylab(colnames(Fragment_combinations_boxplot)[i])+
+        ylab("P(<150 bp)/P(180-220 bp)")+
+        stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif", size = 15)+
+        stat_compare_means(label.y = 0)+
+        ggtitle("SNP"))
+  ggsave(filename=str_c(colnames(Fragment_combinations_boxplot)[i], "_fragment_combination_ratio_boxplot_SNP_v1.png"), width = 15, height = 18, dpi=700)
+  #Sys.sleep(2)
+}
+
+```
+
+For loop correlation plot (Proportion vs Estimated tumour fraction)
+- Correlation plots for different fragment combinations - sWGS, TMB, and SNP
+```{r}
+Fragment_combinations_correlation<-Fragment_combinations_boxplot
+Fragment_combinations_correlation <- as.data.frame(Fragment_combinations_correlation)
+Fragment_combinations_correlation$Estimated_tumour_fraction<-as.numeric(Fragment_combinations_correlation$Estimated_tumour_fraction)
+
+Fragment_name_indices <- which(names(Fragment_combinations_correlation)%in%c("Proportion_below_150_dividedby_160_179", "Proportion_below_150_dividedby_180_220", "Proportion_below_150_dividedby_250_320", "Proportion_160_179_dividedby_below_150", "Proportion_160_179_dividedby_180_220", "Proportion_160_179_dividedby_250_320", "Proportion_180_220_dividedby_below_150", "Proportion_180_220_dividedby_160_179", "Proportion_180_220_dividedby_250_320", "Proportion_250_320_dividedby_below_150", "Proportion_250_320_dividedby_160_179", "Proportion_250_320_dividedby_180_220", "Proportion_below_150_plus_160_179", "Proportion_below_150_plus_180_220", "Proportion_below_150_plus_250_320", "Proportion_160_179_plus_180_220", "Proportion_160_179_plus_250_320", "Proportion_180_220_plus_250_320"))
+
+
+for(i in Fragment_name_indices) {     # Printing ggplot within for-loop
+  print(ggplot(Fragment_combinations_correlation, aes(x=Estimated_tumour_fraction, y=Fragment_combinations_correlation[, i], color=Tumour_origin))+
+        geom_point()+
+        ylim(0, NA)+
+        xlab("Estimated tumour fraction")+
+        ylab(colnames(Fragment_combinations_correlation)[i])+
+        ggtitle("SNP"))
+  ggsave(filename=str_c(colnames(Fragment_combinations_correlation)[i], "_fragment_combination_correlation_Est.Tum.Fra_SNP.png"), width = 20, height = 10, dpi=700)
+  #Sys.sleep(2)
+}
+
+```
+
+For loop correlation plot (Proportion vs Serum hCG)
+- Correlation plots for different fragment combinations - sWGS, TMB, and SNP
+```{r}
+Fragment_combinations_correlation<-Fragment_combinations_boxplot
+Fragment_combinations_correlation <- as.data.frame(Fragment_combinations_correlation)
+Fragment_combinations_correlation$serum_hCG<-as.numeric(Fragment_combinations_correlation$serum_hCG)
+
+Fragment_name_indices <- which(names(Fragment_combinations_correlation)%in%c("Proportion_below_150_dividedby_160_179", "Proportion_below_150_dividedby_180_220", "Proportion_below_150_dividedby_250_320", "Proportion_160_179_dividedby_below_150", "Proportion_160_179_dividedby_180_220", "Proportion_160_179_dividedby_250_320", "Proportion_180_220_dividedby_below_150", "Proportion_180_220_dividedby_160_179", "Proportion_180_220_dividedby_250_320", "Proportion_250_320_dividedby_below_150", "Proportion_250_320_dividedby_160_179", "Proportion_250_320_dividedby_180_220", "Proportion_below_150_plus_160_179", "Proportion_below_150_plus_180_220", "Proportion_below_150_plus_250_320", "Proportion_160_179_plus_180_220", "Proportion_160_179_plus_250_320", "Proportion_180_220_plus_250_320"))
+
+
+for(i in Fragment_name_indices) {     # Printing ggplot within for-loop
+  print(ggplot(Fragment_combinations_correlation, aes(x=serum_hCG, y=Fragment_combinations_correlation[, i], color=Tumour_origin))+
+        geom_point()+
+        scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+        ylim(0, NA)+
+        xlab("Serum hCG")+
+        ylab(colnames(Fragment_combinations_correlation)[i])+
+        ggtitle("SNP"))
+  ggsave(filename=str_c(colnames(Fragment_combinations_correlation)[i], "_fragment_combination_correlation_hCG_SNP.png"), width = 20, height = 10, dpi=700)
+  #Sys.sleep(2)
+}
+
+```
+
+Fragment combination ratios 
+- Estimated tumour content 
+- correlation plots
+```{r}
+Fragment_combinations_correlation<-Fragment_combinations_boxplot
+Fragment_combinations_correlation <- as.data.frame(Fragment_combinations_correlation)
+Fragment_combinations_correlation$Estimated_tumour_fraction<-as.numeric(Fragment_combinations_correlation$Estimated_tumour_fraction)
+
+#excluding normal and non-gestational samples
+Fragment_combinations_correlation<-filter(Fragment_combinations_correlation, Tumour_origin!="Normal hCG" & Tumour_origin!="Non-gestational")
+
+#excluding normal samples
+Fragment_combinations_correlation<-filter(Fragment_combinations_correlation, Tumour_origin!="Normal hCG")
+
+Fragment_combinations_boxplot$Estimated_tumour_percent_bin <- factor(Fragment_combinations_boxplot$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+#ratios
+ratio_sc1<-ggscatter(Fragment_combinations_correlation, x="Estimated_tumour_fraction", y="Proportion_below_150_dividedby_180_220",
+    add = "reg.line",  # Add regression line
+    shape = "Estimated_tumour_percent_bin",
+    fullrange = TRUE,
+    rug = TRUE
+   )+
+  geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # legend.position = "right")+
+  ylim(0, NA)+
+  xlab("Estimated tumour fraction")+
+  ylab("P(<150/180-220 bp)")+
+  ggtitle("SNP")
+
+ratio_sc1
+
+sc1 <- ratio_sc1 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.2)
+
+ratio_sc2<-ggscatter(Fragment_combinations_correlation, x="Estimated_tumour_fraction", y="Proportion_90_150_dividedby_180_220",
+    add = "reg.line",  # Add regression line
+    shape = "Estimated_tumour_percent_bin",
+    fullrange = TRUE,
+    rug = TRUE
+   )+
+  geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # legend.position = "right")+
+        ylim(0, NA)+
+        xlab("Estimated tumour fraction")+
+        ylab("P(90-150/180-220 bp)")+
+        ggtitle("SNP")
+
+ratio_sc2
+
+sc2 <- ratio_sc2 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.2)
+
+ratio_sc3<-ggscatter(Fragment_combinations_correlation, x="Estimated_tumour_fraction", y="Proportion_90_155_dividedby_180_220",
+    add = "reg.line",  # Add regression line
+    shape = "Estimated_tumour_percent_bin",
+    fullrange = TRUE,
+    rug = TRUE
+   )+
+  geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+  theme(text = element_text(size = 20))+
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # legend.position = "right")+
+        ylim(0, NA)+
+        xlab("Estimated tumour fraction")+
+        ylab("P(90-155/180-220 bp)")+
+        ggtitle("SNP")
+
+ratio_sc3
+
+sc3 <- ratio_sc3 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 0.2)
+
+#combine all plots into one (without statistical test)
+ratio_opt_corr_ETC <- ggarrange(ratio_sc1, ratio_sc2, ratio_sc3, ncol = 3, nrow = 1)
+
+#combine all plots into one (with statistical test)
+ratio_opt_corr_ETC <- ggarrange(sc1, sc2, sc3, ncol = 4, nrow = 1)
+
+ratio_opt_corr_ETC
+
+#save plot
+#ggsave("SNP_ETC_ratio_optimisation_correlation_tumour_percent.png", width = 49, height = 15, dpi=700)
+
+```
+
+Fragment combination ratios 
+- Serum hCG 
+- correlation plots
+```{r}
+Fragment_combinations_correlation<-Fragment_combinations_boxplot
+Fragment_combinations_correlation <- as.data.frame(Fragment_combinations_correlation)
+Fragment_combinations_correlation$serum_hCG<-as.numeric(Fragment_combinations_correlation$serum_hCG)
+
+Fragment_combinations_correlation<-filter(Fragment_combinations_correlation, Tumour_origin!="Normal hCG" & Tumour_origin!="Non-gestational")
+Fragment_combinations_correlation<-filter(Fragment_combinations_correlation, Tumour_origin!="Normal hCG")
+
+Fragment_combinations_correlation$Estimated_tumour_percent_bin <- factor(Fragment_combinations_correlation$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+###
+
+group1 <- filter(Fragment_combinations_correlation, Tumour_origin == "Normal hCG")
+group2 <- filter(Fragment_combinations_correlation, Tumour_origin == "Non-gestational")
+group3 <- filter(Fragment_combinations_correlation, Tumour_origin == "Gestational (molar)")
+group4 <- filter(Fragment_combinations_correlation, Tumour_origin == "Gestational (non-molar)")
+
+#P(<150 bp)/P(180-220 bp)
+new_sc1.1 <- ggplot()+
+  geom_smooth(aes(x = serum_hCG, y = Proportion_below_150_dividedby_180_220), data = group3, 
+              method = "lm", se = FALSE, color = "red", fullrange = TRUE) + 
+  geom_smooth(aes(x = serum_hCG, y = Proportion_below_150_dividedby_180_220), data = group4, 
+              method = "lm", se = FALSE, color = "dark green", fullrange = TRUE) + 
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150_dividedby_180_220, fill = Tumour_origin), size = 10, shape = 21, data = group1)+
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150_dividedby_180_220, fill = Tumour_origin), size = 10, shape = 21, data = group2)+
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150_dividedby_180_220, fill = Tumour_origin), size = 10, shape = 21, data = group3)+
+  geom_point(aes(x = serum_hCG, y = Proportion_below_150_dividedby_180_220, fill = Tumour_origin), size = 10, shape = 21, data = group4)+
+  labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "right",
+          legend.text = element_text(size = 20),
+          legend.title = element_text(size = 20))+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, 3.5)+
+  xlab("Serum hCG")+
+  ylab("P(<150 bp)/P(180-220 bp)")
+new_sc1.1
+
+#save plot
+ggsave("SNP_hcG_correlation_TumourOrigin_ratio_v1_1.png", width = 20, height = 15, dpi=700)
+
+ggsave("SNP_hcG_correlation_TumourOrigin_ratio_v2_1.png", width = 20, height = 15, device = "tiff", dpi=700)
+
+###
+
+ratio_sc1<-ggscatter(Fragment_combinations_correlation, x="serum_hCG", y="Proportion_below_150_dividedby_180_220",
+    add = "reg.line",  # Add regression line
+    #color = "Tumour_origin", palette = "jco",
+    shape = "Tumour_origin",
+    fullrange = TRUE,
+    rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 10, shape = 21)+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  theme(text = element_text(size = 35),
+      # axis.text.x=element_text(angle=65, hjust=1),
+      legend.position = "right")+
+  ylim(0, NA)+
+  xlab("Serum hCG")+
+  ylab("P(<150 bp)/P(180-220 bp)")+
+  ggtitle("SNP")
+
+ratio_sc1
+
+#group statistical test by tumour origin
+sc1 <- ratio_sc1 + stat_cor(aes(color = Tumour_origin), method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sc1 <- ratio_sc1 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+sc1
+
+#save plot
+#ggsave("Ratio_fragment_combination_correlation_SNP2.png", width = 20, height = 10, dpi=700)
+
+
+ratio_sc2<-ggscatter(Fragment_combinations_correlation, x="serum_hCG", y="Proportion_90_150_dividedby_180_220",
+    add = "reg.line",  # Add regression line
+    shape = "Tumour",
+    fullrange = TRUE,
+    rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour), size = 3, shape = 21)+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  theme(text = element_text(size = 20))+
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # legend.position = "right")+
+        ylim(0, NA)+
+        xlab("serum_hCG")+
+        ylab("P(90-150/180-220 bp)")+
+        ggtitle("SNP")
+
+ratio_sc2
+
+sc2 <- ratio_sc2 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+
+ratio_sc3<-ggscatter(Fragment_combinations_correlation, x="serum_hCG", y="Proportion_90_155_dividedby_180_220",
+    add = "reg.line",  # Add regression line
+    shape = "Tumour",
+    fullrange = TRUE,
+    rug = TRUE
+   )+
+  geom_point(aes(fill = Tumour), size = 3, shape = 21)+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  theme(text = element_text(size = 20))+
+      # axis.text.x=element_text(angle=65, hjust=1),
+      # legend.position = "right")+
+        ylim(0, NA)+
+        xlab("serum_hCG")+
+        ylab("P(90-155/180-220 bp)")+
+        ggtitle("SNP")
+
+ratio_sc3
+
+sc3 <- ratio_sc3 + stat_cor(method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+#combine all plots into one (without statistical test)
+ratio_opt_corr_ETC <- ggarrange(ratio_sc1, ratio_sc2, ratio_sc3, ncol = 3, nrow = 1)
+
+#combine all plots into one (with statistical test)
+ratio_opt_corr_ETC <- ggarrange(sc1, sc2, sc3, ncol = 4, nrow = 1)
+
+ratio_opt_corr_ETC
+
+#save plot
+#ggsave("SNP_serum_hCG_ratio_optimisation_correlation_Tumour_spearman_2.png", width = 49, height = 15, dpi=700)
+
+```
+
+Stacked bar chart, boxplot, and correlation plot 
+- all data in one plot
+```{r}
+stacked_bar_chart_data_sWGS<-read.csv("\\Users\\Maham\\Desktop\\Aliza\\Imperial\\Project\\Project_2\\Preprocessing\\Insert_size_metrics_data\\sWGS_sample_data_stacked_bar_chart.csv")
+
+stacked_bar_chart_data_TMB<-read.csv("\\Users\\Maham\\Desktop\\Aliza\\Imperial\\Project\\Project_2\\Preprocessing\\Insert_size_metrics_data\\TMB_sample_data_stacked_bar_chart.csv")
+
+stacked_bar_chart_data_SNP<-read.csv("\\Users\\Maham\\Desktop\\Aliza\\Imperial\\Project\\Project_2\\Preprocessing\\Insert_size_metrics_data\\SNP_sample_data_stacked_bar_chart.csv")
+
+#Stacked bar chart
+
+#sWGS
+ggplot(stacked_bar_chart_data_sWGS, aes(fill=Fragment_range, y=Patient, x=Proportion)) + 
+    geom_bar(position="stack", stat="identity") +
+    scale_fill_viridis(discrete = T) +
+    ggtitle("sWGS") +
+    theme_ipsum()
+
+#TMB
+ggplot(stacked_bar_chart_data_TMB, aes(fill=Fragment_range, y=Patient, x=Proportion)) + 
+    geom_bar(position="stack", stat="identity") +
+    scale_fill_viridis(discrete = T) +
+    ggtitle("TMB") +
+    theme_ipsum()
+
+#SNP
+ggplot(stacked_bar_chart_data_SNP, aes(fill=Fragment_range, y=Patient, x=Proportion)) + 
+    geom_bar(position="stack", stat="identity") +
+    scale_fill_viridis(discrete = T) +
+    ggtitle("SNP") +
+    theme_ipsum()
+
+
+#Boxplot 
+Fragment_data_boxplot <- stacked_bar_chart_data_sWGS
+Fragment_data_boxplot <- stacked_bar_chart_data_TMB
+Fragment_data_boxplot <- stacked_bar_chart_data_SNP
+
+Fragment_data_boxplot$Estimated_tumour_fraction<-as.numeric(Fragment_data_boxplot$Estimated_tumour_fraction)
+Fragment_data_boxplot$serum_hCG <- as.numeric(Fragment_data_boxplot$serum_hCG)
+
+Fragment_data_boxplot$Estimated_tumour_percent_bin <- factor(Fragment_data_boxplot$Estimated_tumour_percent_bin, levels = c("0", "0.1-3", "3.1-10", "10.1-30", ">30"))
+
+
+bxp<-ggplot(Fragment_data_boxplot, aes(x = Fragment_range, y = Proportion
+  )) +
+  geom_boxplot(alpha = 0.80) +
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 18),
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.position = "right")+
+  ylim(0, NA)+
+  xlab("Fragment range")+
+  ggtitle("SNP")
+ 
+bxp
+
+#ggsave("sWGS_fragment_range_proportion_boxplot1.png", width = 20, height = 10, dpi=700)
+#ggsave("TMB_fragment_range_proportion_boxplot1.png", width = 20, height = 10, dpi=700)
+#ggsave("SNP_fragment_range_proportion_boxplot1.png", width = 20, height = 10, dpi=700)
+
+
+bxp2<-ggplot(Fragment_data_boxplot, aes(x = Tumour_origin, y = Proportion,
+  )) +
+  geom_boxplot(alpha = 0.80) +
+  geom_point(aes(fill = Fragment_range), size = 3, shape = 21)+
+  theme(text = element_text(size = 18),
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        axis.text.x=element_text(angle=65, hjust=1),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.position = "right")+
+  ylim(0, NA)+
+  xlab("Tumour origin")+
+  facet_grid(~Estimated_tumour_content)+
+  ggtitle("SNP")
+ 
+bxp2
+
+#ggsave("sWGS_fragment_range_proportion_boxplot2.png", width = 20, height = 10, dpi=700)
+#ggsave("TMB_fragment_range_proportion_boxplot2.png", width = 20, height = 10, dpi=700)
+#ggsave("SNP_fragment_range_proportion_boxplot2.png", width = 20, height = 10, dpi=700)
+
+
+bxp3<-ggplot(Fragment_data_boxplot, aes(x = Fragment_range, y = Proportion,
+  )) +
+  geom_boxplot(alpha = 0.80) +
+  geom_point(aes(fill = Estimated_tumour_content), size = 3, shape = 21)+
+  theme(text = element_text(size = 18),
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        axis.text.x=element_text(angle=65, hjust=1),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.position = "right")+
+  ylim(0, NA)+
+  xlab("Fragment range")+
+  facet_grid(~Tumour_origin)+
+  ggtitle("SNP")
+ 
+bxp3
+
+#ggsave("sWGS_fragment_range_proportion_boxplot3.png", width = 20, height = 10, dpi=700)
+#ggsave("TMB_fragment_range_proportion_boxplot3.png", width = 20, height = 10, dpi=700)
+#ggsave("SNP_fragment_range_proportion_boxplot3.png", width = 20, height = 10, dpi=700)
+
+
+bxp4<-ggplot(Fragment_data_boxplot, aes(x = Fragment_range, y = Proportion,
+  )) +
+  geom_boxplot(alpha = 0.80) +
+  geom_point(aes(fill = Patient), size = 3, shape = 21)+
+  theme(text = element_text(size = 18),
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        axis.text.x=element_text(angle=65, hjust=1),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.position = "right")+
+  ylim(0, NA)+
+  xlab("Tumour type")+
+  facet_grid(~Tumour_origin)+
+  ggtitle("SNP")
+ 
+bxp4
+
+#ggsave("sWGS_fragment_range_proportion_boxplot4.png", width = 20, height = 10, dpi=700)
+#ggsave("TMB_fragment_range_proportion_boxplot4.png", width = 20, height = 10, dpi=700)
+#ggsave("SNP_fragment_range_proportion_boxplot4.png", width = 20, height = 10, dpi=700)
+
+
+#Boxplot with statistical test
+
+#sWGS comparisons
+my_comparisons<- list(c("Normal hCG", "Gestational (molar)"), c("Normal hCG", "Gestational (non-molar)"), c("Normal hCG", "Non-gestational"), c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+#sWGS without normal comparison
+my_comparisons<- list(c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+#TMB comparisons
+my_comparisons<- list(c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+#SNP comparisons
+my_comparisons<- list(c("Normal hCG", "Gestational (molar)"), c("Normal hCG", "Gestational (non-molar)"), c("Normal hCG", "Non-gestational"), c("Gestational (non-molar)", "Gestational (molar)"), c("Non-gestational", "Gestational (molar)"), c("Non-gestational", "Gestational (non-molar)"))
+
+
+bxp5<-ggplot(Fragment_data_boxplot, aes(x = Tumour_origin, y = Proportion,
+  )) +
+  geom_boxplot(aes(x=Tumour_origin, y=Proportion)) +
+  geom_point(aes(fill = Estimated_tumour_percent_bin), size = 3, shape = 21)+
+  theme(text = element_text(size = 18),
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        axis.text.x=element_text(angle=65, hjust=1),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.position = "right")+
+  ylim(0, NA)+
+  xlab("Tumour type")+
+  facet_grid(~Fragment_range)+
+  ggtitle("sWGS")+
+  scale_color_viridis_d()+
+  #theme_classic()+
+  stat_compare_means(comparisons = my_comparisons, method = "wilcox.test", label = "p.signif")+
+  #stat_compare_means(comparisons = my_comparisons, method = "wilcox.test")
+  stat_compare_means(label.y = 0)
+ 
+bxp5
+
+#ggsave("sWGS_fragment_range_proportion_boxplot5_3.png", width = 20, height = 10, dpi=700)
+#ggsave("TMB_2_fragment_range_proportion_boxplot5.png", width = 20, height = 10, dpi=700)
+#ggsave("Updated2_SNP_fragment_range_proportion_boxplot5.png", width = 20, height = 10, dpi=700)
+
+
+#Correlation plot
+
+#vs estimated tumour fraction
+bxp_corr1<-ggplot(Fragment_data_boxplot, aes(x = Estimated_tumour_fraction, y = Proportion,
+  )) +
+  #geom_boxplot(alpha = 0.80) +
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 18),
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        axis.text.x=element_text(angle=65, hjust=1),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.position = "right")+
+  ylim(0, NA)+
+  xlab("Estimated tumour fraction")+
+  facet_grid(~Fragment_range)+
+  ggtitle("SNP")
+ 
+bxp_corr1
+
+#ggsave("sWGS_fragment_range_proportion_correlation_Es.tum.frac.png", width = 20, height = 10, dpi=700)
+#ggsave("TMB_fragment_range_proportion_correlation_Es.tum.frac.png", width = 20, height = 10, dpi=700)
+#ggsave("SNP_2_fragment_range_proportion_correlation_Es.tum.frac.png", width = 20, height = 10, dpi=700)
+
+
+#vs serum hCG
+bxp_corr2<-ggplot(Fragment_data_boxplot, aes(x = serum_hCG, y = Proportion,
+  )) +
+  #geom_boxplot(alpha = 0.80) +
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 18),
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        axis.text.x=element_text(angle=65, hjust=1),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, NA)+
+  xlab("Serum hCG")+
+  facet_grid(~Fragment_range)+
+  ggtitle("SNP")
+ 
+bxp_corr2
+
+#ggsave("sWGS_fragment_range_proportion_correlation_hCG.png", width = 20, height = 10, dpi=700)
+#ggsave("TMB_fragment_range_proportion_correlation_hCG.png", width = 20, height = 10, dpi=700)
+#ggsave("SNP_3_fragment_range_proportion_correlation_hCG.png", width = 20, height = 10, dpi=700)
+
+
+#scatter plots with correlation coefficient
+
+#vs estimated tumour fraction
+sp_corr1<-ggscatter(Fragment_data_boxplot, x = "Estimated_tumour_fraction", y = "Proportion",
+   add = "reg.line",  # Add regression line
+   #conf.int = TRUE, # Add confidence interval
+   #color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin",
+   fullrange = TRUE,
+   rug = TRUE
+   )+
+  #geom_boxplot(alpha = 0.80) +
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 18),
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        #axis.text.x=element_text(angle=65, hjust=1),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.position = "right")+
+  ylim(0, NA)+
+  xlab("Estimated tumour fraction")+
+  facet_grid(~Fragment_range)+
+  ggtitle("sWGS")
+
+# Add correlation coefficient
+sp_corr1 + stat_cor(aes(color = Tumour_origin), method = "spearman", cor.coef.name = "rho", label.x = 0.25)
+
+#ggsave("sWGS_fragment_range_proportion_correlation_Es.tum.frac_Spearman.png", width = 20, height = 10, dpi=700)
+#ggsave("New_TMB_fragment_range_proportion_correlation_Es.tum.frac_Spearman.png", width = 20, height = 10, dpi=700)
+#ggsave("New_SNP_fragment_range_proportion_correlation_Es.tum.frac_Spearman.png", width = 20, height = 10, dpi=700)
+
+
+#vs serum hCG
+sp_corr2 <- ggscatter(Fragment_data_boxplot, x = "serum_hCG", y = "Proportion",
+   add = "reg.line",  # Add regression line
+   #add.params = list(color = "black", fill = "lightgray"), # Customize reg. line
+   #conf.int = TRUE # Add confidence interval
+   color = "Tumour_origin", palette = "jco",
+   shape = "Tumour_origin"
+   )+
+  geom_point(aes(fill = Tumour_origin), size = 3, shape = 21)+
+  theme(text = element_text(size = 18),
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+        axis.text.x=element_text(angle=65, hjust=1),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.x = element_blank(),
+        legend.position = "right")+
+  scale_x_log10(labels = scales::number_format(accuracy = 1), breaks = scales::trans_breaks("log10", function(x) 10^x), limits = c(1,NA))+
+  ylim(0, NA)+
+  xlab("Serum hCG")+
+  facet_grid(~Fragment_range)+
+  ggtitle("sWGS")
+
+# Add correlation coefficient
+sp_corr2 + stat_cor(aes(color = Tumour_origin), method = "spearman", cor.coef.name = "rho", label.x = 1)
+
+#ggsave("New_sWGS_fragment_range_proportion_correlation_hCG_Spearman.png", width = 20, height = 10, dpi=700)
+#ggsave("New_TMB_fragment_range_proportion_correlation_hCG_Spearman.png", width = 20, height = 10, dpi=700)
+#ggsave("New_SNP_fragment_range_proportion_correlation_hCG_Spearman.png", width = 20, height = 10, dpi=700)
+
+
+#checking for normality (for correlation plots)
+n <- ggplot(Fragment_data_boxplot, aes(x=Estimated_tumour_fraction)) + 
+  geom_histogram()
+n
+
+
+n2 <- ggplot(Fragment_data_boxplot, aes(x=serum_hCG)) + 
+  geom_histogram()
+n2
+
+```
+
+IchorCNA data - tumour content plots (only for sWGS data)
+```{r}
+ichorCNA_data_sWGS<-read.csv("Tumour_fraction_ichorCNA_sWGS.csv")
+
+#Estimated_tumour_fraction vs ichorCNA tumour content based on all fragments
+
+#exclude samples with ichorCNA tumour fraction as 0% prior to filtering
+ichorCNA_data_sWGS<-filter(ichorCNA_data_sWGS, ichorCNA_tumour_fraction_all != 0)
+
+#using the same data as above, exclude normal control samples
+ichorCNA_data_sWGS<-filter(ichorCNA_data_sWGS, Tumour_origin != "Normal hCG")
+
+
+ggplot(ichorCNA_data_sWGS, aes(x=Estimated_tumour_fraction, y=ichorCNA_tumour_fraction_all, color=Tumour_origin))+
+  geom_point(size = 8)+
+  labs(color = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          #legend.position = "top",
+          legend.text = element_text(size = 30),
+          legend.title = element_text(size = 30))+
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, 0.7)+
+  xlim(0, 0.9)+
+  xlab("Original Estimated Tumour Fraction")+
+  ylab("ichorCNA Tumour Fraction")
+  
+ggsave("sWGS_Tumour_fraction_ichorCNA_allvsEst_v1.png", width = 20, height = 10, dpi = 700)
+
+ggsave("sWGS_Tumour_fraction_ichorCNA_allvsEst_v2.png", width = 20, height = 10, device = "tiff", dpi = 700)
+
+
+#Estimated_tumour_fraction vs ichorCNA tumour content based on all other fragments
+
+ggplot(ichorCNA_data_sWGS, aes(x=Estimated_tumour_fraction, y=ichorCNA_tumour_fraction_150, color=Tumour_origin))+
+  geom_point()+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, NA)
+ggsave("New_sWGS_Tumour_fraction_ichorCNA_150vsEst.png")
+
+ggplot(ichorCNA_data_sWGS, aes(x=Estimated_tumour_fraction, y=ichorCNA_tumour_fraction_50_150, color=Tumour_origin))+
+  geom_point()+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, NA)
+ggsave("New2_sWGS_Tumour_fraction_ichorCNA_50-150vsEst.png")
+
+
+ggplot(ichorCNA_data_sWGS, aes(x=Estimated_tumour_fraction, y=ichorCNA_tumour_fraction_90_150, color=Tumour_origin))+
+  geom_point()+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, NA)
+ggsave("New2_sWGS_Tumour_fraction_ichorCNA_90-150vsEst.png")
+
+
+ggplot(ichorCNA_data_sWGS, aes(x=Estimated_tumour_fraction, y=ichorCNA_tumour_fraction_160_179, color=Tumour_origin))+
+  geom_point()+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, NA)
+ggsave("New2_sWGS_Tumour_fraction_ichorCNA_160-179vsEst.png")
+
+
+ggplot(ichorCNA_data_sWGS, aes(x=Estimated_tumour_fraction, y=ichorCNA_tumour_fraction_180_220, color=Tumour_origin))+
+  geom_point()+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, NA)
+ggsave("New2_sWGS_Tumour_fraction_ichorCNA_180-220vsEst.png")
+
+
+ggplot(ichorCNA_data_sWGS, aes(x=Estimated_tumour_fraction, y=ichorCNA_tumour_fraction_250_320, color=Tumour_origin))+
+  geom_point()+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, NA)
+ggsave("New2_sWGS_Tumour_fraction_ichorCNA_250-320vsEst.png")
+
+
+#ichorCNA tumour content based on all fragments vs ichorCNA tumour content based on all other fragments
+
+ggplot(ichorCNA_data_sWGS, aes(x=ichorCNA_tumour_fraction_all, y=ichorCNA_tumour_fraction_150, color=Tumour_origin))+
+  geom_point(size = 8)+
+  labs(color = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          axis.title.x = element_text(size = 30),
+          axis.title.y = element_text(size = 27),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          #legend.position = "top",
+          legend.text = element_text(size = 30),
+          legend.title = element_text(size = 30))+
+  scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, 0.7)+
+  xlim(0, 0.7)+
+  xlab("ichorCNA Tumour Fraction Pre-Filtering")+
+  ylab("ichorCNA Tumour Fraction Post-Filtering <150 bp")
+
+ggsave("sWGS_Tumour_fraction_ichorCNA_150vsAll_v1_1.png", width = 20, height = 10, device = "tiff", dpi = 700)
+
+ggsave("sWGS_Tumour_fraction_ichorCNA_150vsAll_v2_2.png", width = 20, height = 10, dpi = 700)
+
+
+ggplot(ichorCNA_data_sWGS, aes(x=ichorCNA_tumour_fraction_all, y=ichorCNA_tumour_fraction_50_150, color=Tumour_origin))+
+  geom_point()+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, NA)
+ggsave("New2_sWGS_Tumour_fraction_ichorCNA_50-150vsAll.png")
+
+
+ggplot(ichorCNA_data_sWGS, aes(x=ichorCNA_tumour_fraction_all, y=ichorCNA_tumour_fraction_90_150, color=Tumour_origin))+
+  geom_point()+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, NA)
+ggsave("New2_sWGS_Tumour_fraction_ichorCNA_90-150vsAll.png")
+
+
+ggplot(ichorCNA_data_sWGS, aes(x=ichorCNA_tumour_fraction_all, y=ichorCNA_tumour_fraction_160_179, color=Tumour_origin))+
+  geom_point()+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, NA)
+ggsave("New2_sWGS_Tumour_fraction_ichorCNA_160-179vsAll.png")
+
+
+ggplot(ichorCNA_data_sWGS, aes(x=ichorCNA_tumour_fraction_all, y=ichorCNA_tumour_fraction_180_220, color=Tumour_origin))+
+  geom_point()+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, NA)
+ggsave("New2_sWGS_Tumour_fraction_ichorCNA_180-220vsAll.png")
+
+
+ggplot(ichorCNA_data_sWGS, aes(x=ichorCNA_tumour_fraction_all, y=ichorCNA_tumour_fraction_250_320, color=Tumour_origin))+
+  geom_point()+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  ylim(0, NA)
+ggsave("New2_sWGS_Tumour_fraction_ichorCNA_250-320vsAll.png")
+
+```
+
+SNP panel analysis
+```{r}
+SNP_data_raw<-read.csv("\\Users\\Maham\\Desktop\\Aliza\\Imperial\\Project\\Project_2\\Preprocessing\\SNP_data\\all_UMIcons02_nongDNA.csv")
+SNP_data_raw<-as.data.frame(SNP_data_raw)
+SNP_data_raw$deviation<-as.numeric(SNP_data_raw$deviation)
+
+#run this
+SNP_data_raw2<-read.csv("\\Users\\Maham\\Desktop\\Aliza\\Imperial\\Project\\Project_2\\Preprocessing\\SNP_data\\filtered_SNP_data_wide_2.csv")
+SNP_data_raw2<-as.data.frame(SNP_data_raw2)
+
+SNP_data_raw3<-read.csv("\\Users\\Maham\\Desktop\\Aliza\\Imperial\\Project\\Project_2\\Preprocessing\\SNP_data\\filtered_SNP_data.csv")
+SNP_data_raw3<-as.data.frame(SNP_data_raw3)
+
+#run this
+SNP_data_new2 <- SNP_data_raw %>%
+  group_by(sample) %>%
+  summarise(mean_fraction = mean(deviation), number_of_SNPs = n())
+
+
+SNP_data_new <- SNP_data_raw %>%
+  group_by(sample_ID, patient, sample_type, sample_number) %>%
+  summarise(mean_fraction = mean(deviation))
+
+#write.csv(SNP_data_new, "SNP_data_new.csv", row.names=FALSE, quote=FALSE)
+
+#Plot
+ggplot(SNP_data_raw3, aes(color=sample, y=sample_ID, x=mean_fraction)) + 
+    geom_point(stat="identity")
+ggsave("SNP_data_analysis_plot.png", width = 20, height = 10, dpi=700)
+
+
+#Scatter plots
+
+#difference in fractions
+ggplot(SNP_data_raw2, aes(x=original_fraction,  y=filtered_fraction))+ 
+  geom_point(aes(fill = sample_ID), size = 10, shape = 21)+
+  ggtitle("SNP Panel")+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  xlab("Original Fraction")+
+  ylab("Filtered Fraction")+
+  theme(text = element_text(size = 30))
+ggsave("SNP_data_analysis_correlationplot1_LineAtOrigin2.png", width = 20, height = 10, dpi=700)
+
+ggplot(SNP_data_raw2, aes(x=original_fraction,  y=filtered_fraction))+ 
+  geom_point(aes(fill = Tumour_origin), size = 6, shape = 21)+
+  ggtitle("SNP Panel")+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  xlab("Original Tumour Fraction")+
+  ylab("Filtered Tumour Fraction <150 bp")+
+  labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 35),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "top",
+          legend.text = element_text(size = 30),
+          legend.title = element_text(size = 30))
+
+ggsave("SNP_data_analysis_correlationplot_TumourOrigin_LineAtOrigin_v1.png", width = 15, height = 10, dpi=700)
+
+ggsave("SNP_data_analysis_correlationplot_TumourOrigin_LineAtOrigin_v2.png", width = 15, height = 10, device = "tiff", dpi=700)
+
+
+ggplot(SNP_data_raw2, aes(x=original_fraction,  y=filtered_fraction))+ 
+  geom_point(aes(fill = Tumour), size = 3, shape = 21)+
+  ggtitle("SNP Panel")+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  xlab("Original Fraction")+
+  ylab("Filtered Fraction")
+ggsave("SNP_data_analysis_correlationplot_Tumour_LineAtOrigin.png", width = 20, height = 10, dpi=700)
+
+
+#difference in SNPs
+ggplot(SNP_data_raw2, aes(x=original_SNP_count,  y=filtered_SNP_count))+ 
+  geom_point(aes(fill = Tumour_origin), size = 6, shape = 21)+
+  ggtitle("SNP Panel")+
+  #scale_x_continuous(expand = c(0, 0), limits = c(0, NA))+
+  #scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+  geom_abline(slope = 1, intercept = 0)+
+  xlab("Original SNP Count")+
+  ylab("Filtered SNP Count <150 bp")+
+  labs(fill = "Tumour Origin")+
+        theme(text = element_text(size = 40),
+          axis.text.x = element_text(size=35),
+          axis.text.y = element_text(size=35),
+          #panel.grid.minor.x = element_blank(),
+          #panel.grid.major.x = element_blank(),
+          #axis.text.x = element_text(angle=65, hjust=1),
+          legend.position = "top",
+          legend.text = element_text(size = 30),
+          legend.title = element_text(size = 30))
+
+ggsave("SNP_data_analysis_correlationplot2_LineAtOrigin_v1.png", width = 15, height = 10, dpi=700)
+
+ggsave("SNP_data_analysis_correlationplot2_LineAtOrigin_v2.png", width = 15, height = 10, device = "tiff", dpi=700)
+
+
+```
+
+FrEIA heatmap
+```{r}
+FrEIA_data<-read.csv("\\Users\\Maham\\Desktop\\Aliza\\Imperial\\Project\\Project_2\\Preprocessing\\FrEIA\\gtd_cfDNA_sWGS\\4_FrEIA\\5_FrEIA_score\\gtd_cfDNA_sWGS_FrEIA_corrected_tnc_3.csv")
+
+#normalised data in log2 scale
+FrEIA_data<-read.csv("\\Users\\Maham\\Desktop\\Aliza\\Imperial\\Project\\Project_2\\Preprocessing\\FrEIA\\gtd_cfDNA_sWGS\\4_FrEIA\\5_FrEIA_score\\gtd_cfDNA_sWGS_FrEIA_corrected_tnc_6.csv")
+
+#heatmap data
+FrEIA_data2 <- FrEIA_data[,-1]
+rownames(FrEIA_data2) <- FrEIA_data[,1]
+FrEIA_data2 <- as.matrix(FrEIA_data2)
+
+#grouping based on tumour origin
+control <- FrEIA_data2[grep("Control", row.names(FrEIA_data2)),]
+Gestational_non_molar <- FrEIA_data2[grep("Gestational_non_molar", row.names(FrEIA_data2)),]
+Gestational_molar <- FrEIA_data2[grep("Gestational_molar", row.names(FrEIA_data2)),]
+Non_gestational <- FrEIA_data2[grep("Non_gestational", row.names(FrEIA_data2)),]
+
+#grouping based on tumour subtype
+PTD <- FrEIA_data2[grep("PTD", row.names(FrEIA_data2)),]
+PSTT <- FrEIA_data2[grep("PSTT", row.names(FrEIA_data2)),]
+ETT <- FrEIA_data2[grep("ETT", row.names(FrEIA_data2)),]
+Choriocarcinoma <- FrEIA_data2[grep("Choriocarcinoma", row.names(FrEIA_data2)),]
+Unexplained_elevated_hCG <- FrEIA_data2[grep("Unexplained_elevated_hCG", row.names(FrEIA_data2)),]
+
+#colour-coding tumour origins
+Tumour_origin_colours<-unlist(lapply(rownames(FrEIA_data2), function(x){
+  if(grepl("Control",x)) '#808080' # grey
+  else if (grepl("Non_gestational",x)) '#FFC0CB' # pink
+  else if (grepl("Gestational_non_molar",x)) '#00994C' # dark green
+  else if (grepl("Gestational_molar",x)) '#00FF00' # light green
+}))
+
+#colour-coding tumour subtypes
+Tumour_subtype_colours<-unlist(lapply(rownames(FrEIA_data2), function(x){
+  if(grepl("Control",x)) '#808080' # grey
+  else if (grepl("Non_gestational",x)) '#FFC0CB' # pink
+  else if (grepl("PTD",x)) '#0066CC' # dark blue
+  else if (grepl("Choriocarcinoma",x)) '#FF0000' # red
+  else if (grepl("PSTT",x)) '#B266FF' # purple
+  else if (grepl("ETT",x)) '#66FFFF' # light blue
+  else if (grepl("Unexplained_elevated_hCG",x)) '#FFFF99' # yellow
+}))
+
+#combining tumour origin and tumour subtype groupings
+#myCols <- cbind(Tumour_origin_colours, Tumour_subtype_colours)
+#colnames(myCols)[1] <- "Tumour origin"
+#colnames(myCols)[2] <- "Tumour subtype"
+
+#heatmap coloured by tumour origin
+heatmap(FrEIA_data2, scale="column", Colv=NA, cexCol = 0.75, RowSideColors = Tumour_origin_colours, margins=c(20,13), hclustfun=function(x) hclust(x, method="average"))
+legend(-0.07,1,legend=c("Control","Gestational (non-molar)","Gestational (molar)","Non-gestational"),fill=c('#808080','#00994C','#00FF00','#FFC0CB'), title="Tumour origin", cex=0.55)
+
+#heatmap coloured by tumour subtype
+heatmap(FrEIA_data2, scale="column", Colv=NA, cexCol = 0.75, RowSideColors = Tumour_subtype_colours, margins=c(20,13), hclustfun=function(x) hclust(x, method="average"))
+legend(-0.07,1,legend=c("Control","Non-gestational", "PTD", "Choriocarcinoma", "PSTT", "ETT","Unexplained_elevated_hCG" ),fill=c('#808080','#FFC0CB', '#0066CC','#FF0000','#B266FF','#66FFFF','#FFFF99'), title="Tumour subtype", cex=0.55)
+
+#another way of generating heatmap
+
+#without normalisation
+
+#heatmap coloured by tumour origin
+heatmap.2(FrEIA_data2, Colv=NA, trace="none", density="none", col=bluered(20), cexCol=0.75, margins=c(5,35), RowSideColors = Tumour_origin_colours, hclustfun=function(x) hclust(x, method="average"))
+legend(0.8,1,legend=c("Control","Gestational (non-molar)","Gestational (molar)","Non-gestational"),fill=c('#808080','#00994C','#00FF00','#FFC0CB'), title="Tumour origin", cex=0.6)
+
+#heatmap coloured by tumour subtype
+heatmap.2(FrEIA_data2, Colv=NA, trace="none", density="none", col=bluered(20), cexCol=0.75, margins=c(5,35), RowSideColors = Tumour_subtype_colours, hclustfun=function(x) hclust(x, method="average"))
+legend(0.8,1.063,legend=c("Control","Non-gestational", "PTD", "Choriocarcinoma", "PSTT", "ETT","Unexplained_elevated_hCG" ),fill=c('#808080','#FFC0CB', '#0066CC','#FF0000','#B266FF','#66FFFF','#FFFF99'), title="Tumour subtype", cex=0.55)
+
+
+#with normalisation
+
+#heatmap coloured by tumour origin
+heatmap.2(FrEIA_data2, Colv=NA, trace="none", density="none", col=bluered(20), cexCol=0.75, margins=c(5,35), scale="row", RowSideColors = Tumour_origin_colours, hclustfun=function(x) hclust(x, method="average"))
+legend(0.8,1,legend=c("Control","Gestational (non-molar)","Gestational (molar)","Non-gestational"),fill=c('#808080','#00994C','#00FF00','#FFC0CB'), title="Tumour origin", cex=0.6)
+
+#heatmap coloured by tumour subtype
+heatmap.2(FrEIA_data2, Colv=NA, trace="none", density="none", col=bluered(20), cexCol=0.75, margins=c(5,35), scale="row", RowSideColors = Tumour_subtype_colours, hclustfun=function(x) hclust(x, method="average"))
+legend(0.8,1.063,legend=c("Control","Non-gestational", "PTD", "Choriocarcinoma", "PSTT", "ETT","Unexplained_elevated_hCG" ),fill=c('#808080','#FFC0CB', '#0066CC','#FF0000','#B266FF','#66FFFF','#FFFF99'), title="Tumour subtype", cex=0.55)
+
+
+#without hclust function
+
+#heatmap coloured by tumour origin
+pdf(file="Heatmap_TumourOrigin.pdf", width = 15)
+heatmap.2(FrEIA_data2, Colv=NA, trace="none", col=bluered(20), cexCol=0.75, margins=c(5,35), RowSideColors = Tumour_origin_colours)
+legend(0.8,1,legend=c("Control","Gestational (non-molar)","Gestational (molar)","Non-gestational"),fill=c('#808080','#00994C','#00FF00','#FFC0CB'), title="Tumour origin", cex=0.6)
+dev.off()
+
+#heatmap coloured by tumour subtype
+pdf(file="Heatmap_TumourSubtype.pdf", width = 15)
+heatmap.2(FrEIA_data2, Colv=NA, trace="none", col=bluered(20), cexCol=0.75, margins=c(5,35), RowSideColors = Tumour_subtype_colours)
+legend(0.8,1,legend=c("Control","Non-gestational", "PTD", "Choriocarcinoma", "PSTT", "ETT","Unexplained_elevated_hCG" ),fill=c('#808080','#FFC0CB', '#0066CC','#FF0000','#B266FF','#66FFFF','#FFFF99'), title="Tumour subtype", cex=0.55)
+dev.off()
+
+
+#another way
+library(heatmaply)
+
+heatmaply(
+  FrEIA_data2,
+  xlab = "Trinucleotide",
+  ylab = "Sample", 
+  main = "Data Normalization"
+)
+
+```
+
